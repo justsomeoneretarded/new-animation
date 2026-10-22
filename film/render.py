@@ -179,7 +179,7 @@ def frame(t,width=1920):
         tower(c,t)
         character(c,1260,534,.94,mood='hope' if p<.5 else 'surprise',phase=pt,arm=((97,-250),(142,-320-30*ease(p))),look=1)
         shadow(c,1580,838,1.5,phase=pt,hand=True)
-        enough(c,235-95*ease((p-.4)/.6),1337,1750)
+        enough(c,235-45*ease((p-.4)/.6),1337,1750)
         if .1<p<.46:c.glow(1395,235,110,'#ead0a2',.35*math.sin((p-.1)/.36*math.pi))
         if p>.55:c.text((1530,554),'Just a little more.',24,'#d3999b','center','italic')
     elif name=='fall':
@@ -188,7 +188,7 @@ def frame(t,width=1920):
             y=lerp(534,870,ease(p*2));x=lerp(1260,1045,ease(p*2))
             character(c,x,y,.94,mood='surprise',pose='crouch',arm=((100,-180),(140,-140)),phase=pt)
         else:character(c,1045,870,.94,mood='sad',pose='fall',phase=pt)
-        enough(c,140,1337,1750)
+        enough(c,190,1337,1750)
         # Papers flutter at different speeds, then settle.
         for i in range(9):
             x=1040+math.sin(i*2.4)*300*p;y=600+((i*43+u*90)%220)
@@ -196,7 +196,7 @@ def frame(t,width=1920):
     elif name=='floor':
         tower(c,t,scatter=1)
         character(c,1045,870,.94,mood='sad',pose='fall',phase=pt)
-        enough(c,140,1337,1750)
+        enough(c,190,1337,1750)
         c.rect((1175,832,1263,852),'#334858','#7a929c',2,r=5)
         if p>.75:c.glow(1215,833,110,'#8dabb9',.18)
     elif name=='message':
@@ -259,7 +259,7 @@ def frame(t,width=1920):
         'measure':'There was always something missing.',
         'build':'Maybe I just needed more proof.',
         'touch':'For a moment, I thought I had made it.',
-        'floor':'I had so much to show. And no one to show up for.',
+        'floor':'I had so much to show. I’d forgotten to show up.',
     }
     if .16<p<.92:subtitle(c,captions.get(name,''))
     c.flush()
