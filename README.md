@@ -4,6 +4,8 @@ An original 90-second animated short about trying to reach a standard that keeps
 
 ## Watch the finished film
 
+**[Download the first complete cut](https://github.com/justsomeoneretarded/new-animation/actions/runs/39749049154/artifacts/12412153526)** — unzip and open `Am-I-enough.mp4`. [Verified workflow run](https://github.com/justsomeoneretarded/new-animation/actions/runs/39749049154) completed in approximately 3 minutes, including parallel rendering, original sound synthesis, assembly, validation and upload. This is one measured run, not a guarantee of future queue or execution time.
+
 Open this repository’s **Actions** tab, select the latest successful **Render Am I enough** run, and download **Am-I-enough-complete-film** under Artifacts. Unzip it and open `Am-I-enough.mp4`.
 
 The artifact also contains a storyboard, poster, production script, stereo soundtrack, timing log and validation results. Editable audio stems are available in a separate artifact. Artifacts expire after the retention period; download a copy you want to keep.
