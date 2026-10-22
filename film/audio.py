@@ -10,6 +10,7 @@ import numpy as np
 from scipy import signal
 from scipy.io import wavfile
 from .story import DURATION
+from .toolchain import FFMPEG
 
 SR=48000
 RNG=np.random.default_rng(1947)
@@ -152,12 +153,12 @@ def make(out):
         wavfile.write(out/f'{name}.wav',SR,stem)
     master=music+amb+fx
     wavfile.write(out/'premaster.wav',SR,master)
-    command=['ffmpeg','-hide_banner','-nostats','-i',str(out/'premaster.wav'),'-af','loudnorm=I=-16:TP=-1.5:LRA=9:print_format=json','-f','null','-']
+    command=[FFMPEG,'-hide_banner','-nostats','-i',str(out/'premaster.wav'),'-af','loudnorm=I=-16:TP=-1.5:LRA=9:print_format=json','-f','null','-']
     r=subprocess.run(command,capture_output=True,text=True,check=True)
     import re
     stats=json.loads(re.search(r'\{\s*"input_i".*?\}',r.stderr,re.S).group())
     fil=('loudnorm=I=-16:TP=-1.5:LRA=9:measured_I='+stats['input_i']+':measured_TP='+stats['input_tp']+':measured_LRA='+stats['input_lra']+':measured_thresh='+stats['input_thresh']+':offset='+stats['target_offset']+':linear=true:print_format=json')
-    subprocess.run(['ffmpeg','-y','-v','error','-i',str(out/'premaster.wav'),'-af',fil,'-ar',str(SR),'-c:a','pcm_s24le',str(out/'soundtrack.wav')],check=True)
+    subprocess.run([FFMPEG,'-y','-v','error','-i',str(out/'premaster.wav'),'-af',fil,'-ar',str(SR),'-c:a','pcm_s24le',str(out/'soundtrack.wav')],check=True)
     (out/'sound-events.json').write_text(json.dumps(events,indent=2)+'\n')
     (out/'audio-analysis.json').write_text(json.dumps(stats,indent=2)+'\n')
     print(f'Original soundtrack and {len(events)} sound events written to {out}',flush=True)

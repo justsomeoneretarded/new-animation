@@ -10,6 +10,7 @@ The project installs, rather than vendors, the following free tools:
 | NumPy | Numeric synthesis and gradients | BSD-3-Clause |
 | SciPy | Audio filters and WAV writing | BSD-3-Clause |
 | FFmpeg | Encoding, assembly, loudness measurement | Build-dependent LGPL/GPL; Ubuntu build includes GPL components |
+| imageio-ffmpeg | Packaged FFmpeg binary for reproducible runner setup | BSD-2-Clause wrapper; bundled FFmpeg has its own build license |
 | DejaVu fonts | Typography | DejaVu / Bitstream Vera |
 
 Refer to each installed distribution for authoritative license terms. No reference-video assets, stock recordings, generative-service outputs, or external soundfonts are included. GitHub Actions and artifact hosting are services governed by GitHub’s terms and account limits.

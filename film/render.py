@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from .art import *
 from .story import SHOTS, DURATION, FPS, POSE_FPS, TITLE, shot_at
+from .toolchain import FFMPEG
 
 def camera_image(im,zoom,cx=960,cy=540):
     k=im.width/1920
@@ -292,7 +293,7 @@ def render(args):
         return
     begin=args.start;end=min(args.end,DURATION);fps=args.fps
     target=out/f'picture-{begin:g}-{end:g}.mp4'
-    cmd=['ffmpeg','-y','-v','error','-f','rawvideo','-pix_fmt','rgb24','-s',f'{args.width}x{round(args.width*1080/1920)}','-r',str(fps),'-i','-','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart',str(target)]
+    cmd=[FFMPEG,'-y','-v','error','-f','rawvideo','-pix_fmt','rgb24','-s',f'{args.width}x{round(args.width*1080/1920)}','-r',str(fps),'-i','-','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart',str(target)]
     proc=subprocess.Popen(cmd,stdin=subprocess.PIPE)
     n=round((end-begin)*fps);started=time.monotonic()
     try:

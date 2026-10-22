@@ -21,10 +21,10 @@ No secrets, paid APIs, GPU, external model or asset downloads are required. The 
 
 ## Run locally
 
-Requirements: Python 3.12, FFmpeg and DejaVu fonts. On Ubuntu:
+Requirements: Python 3.12 and DejaVu fonts. FFmpeg is supplied by a pinned Python wheel, avoiding slow system-package mirror updates in GitHub Actions. On Ubuntu:
 
 ```bash
-sudo apt-get install ffmpeg fonts-dejavu-core
+sudo apt-get install fonts-dejavu-core
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
