@@ -1,0 +1,117 @@
+name: Render Am I enough
+
+on:
+  workflow_dispatch:
+    inputs:
+      width:
+        description: Picture width (1920 = full HD; 1280 = faster review)
+        type: choice
+        options: ['1920', '1280']
+        default: '1920'
+  push:
+    branches: [main]
+    paths: ['film/**', 'requirements.txt', '.github/workflows/render.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: film-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  picture:
+    name: Picture ${{ matrix.start }}–${{ matrix.end }} seconds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {start: 0, end: 30}
+          - {start: 30, end: 60}
+          - {start: 60, end: 90}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install free rendering tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+          python -m pip install -r requirements.txt
+      - name: Render layered 2D picture
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: >-
+          python -m film.render
+          --start ${{ matrix.start }} --end ${{ matrix.end }}
+          --width ${{ inputs.width || '1920' }} --out build/chunks
+      - uses: actions/upload-artifact@v4
+        with:
+          name: picture-${{ matrix.start }}
+          path: build/chunks/*.mp4
+          retention-days: 2
+          if-no-files-found: error
+
+  finish:
+    name: Sound, edit and validate
+    needs: picture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install free finishing tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+          python -m pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: picture-*
+          path: build/chunks
+          merge-multiple: true
+      - name: Compose original sound and finish film
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: >-
+          python -m film.build --out build/final
+          --width ${{ inputs.width || '1920' }}
+          --chunks build/chunks/picture-0-30.mp4
+          build/chunks/picture-30-60.mp4 build/chunks/picture-60-90.mp4
+      - name: Upload finished film and production materials
+        uses: actions/upload-artifact@v4
+        with:
+          name: Am-I-enough-complete-film
+          path: |
+            build/final/Am-I-enough.mp4
+            build/final/poster.jpg
+            build/final/mirror-still.jpg
+            build/final/storyboard.jpg
+            build/final/PRODUCTION.md
+            build/final/validation.json
+            build/final/final-loudness.json
+            build/final/audio/sound-events.json
+            build/final/audio/soundtrack.wav
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload editable audio stems
+        uses: actions/upload-artifact@v4
+        with:
+          name: Am-I-enough-audio-stems
+          path: |
+            build/final/audio/music.wav
+            build/final/audio/ambience.wav
+            build/final/audio/foley.wav
+          retention-days: 7
+      - name: Summarize
+        run: |
+          echo '### Am I enough?' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Download **Am-I-enough-complete-film** below for the 90-second MP4, storyboard, poster, script and soundtrack.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Original 2D animation; 24 fps picture; principally 12 fps character poses; synthesized original score and foley. No API keys.' >> "$GITHUB_STEP_SUMMARY"
