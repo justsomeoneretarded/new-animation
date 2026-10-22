@@ -29,7 +29,7 @@ def tower(c,t,count=7,scatter=0):
     colors=['#506f7b','#aa8764','#58686d','#877866','#647b74','#92775d','#536576']
     rng=np.random.default_rng(319)
     for i in range(count):
-        x=1088+math.sin(i*2.1)*18; y=870-i*48
+        x=1218+math.sin(i*2.1)*18; y=870-i*48
         if scatter:
             x+=float(rng.uniform(-420,390))*scatter
             y+=i*48*scatter+math.sin(i)*18*scatter
