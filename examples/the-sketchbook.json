@@ -122,7 +122,7 @@
     {"dur": 3.6, "set": "desk", "time": "dawn", "music": "high", "hud": {"value": 1, "chapter": "Day 30"},
      "camera": {"frame": "medium", "push": 0.05},
      "items": [{"type": "books", "on": "desk", "x": 40}, {"type": "sketchbook", "x": 62, "count": 3}],
-     "actors": [{"id": "demon", "x": 66, "pose": "stand", "scale": 0.55, "opacity": 0.5}, {"id": "hero", "x": 50, "pose": "type", "mood": "happy", "hold": "pencil"}],
+     "actors": [{"id": "demon", "x": 74, "pose": "stand", "scale": 0.55, "opacity": 0.45}, {"id": "hero", "x": 50, "pose": "type", "mood": "happy", "hold": "pencil"}],
      "lines": [{"who": "demon", "text": "...", "at": 1.6}]},
     {"dur": 4.4, "set": "rooftop", "time": "dusk", "music": "high", "hud": {"value": 1, "chapter": "Day 30"},
      "camera": {"frame": "two", "on": "hero"},

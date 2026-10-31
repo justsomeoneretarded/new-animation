@@ -151,7 +151,7 @@ function drawWorld(shot, u, t) {
   const vg = ctx.createRadialGradient(W / 2, H * .52, H * .35, W / 2, H / 2, W * .72);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${shot.light === 'dark' ? .85 : .6})`);
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-  const demonTalk = (shot.lines || []).some(l => (FILM.cast[l.who] || {}).kind === 'demon' && u >= (l.at ?? 0) && u <= (l.at ?? 0) + 1.2);
+  const demonTalk = (shot.lines || []).some(l => (FILM.cast[l.who] || {}).kind === 'demon' && /[a-z]/i.test(l.text) && u >= (l.at ?? 0) && u <= (l.at ?? 0) + 1.2);
   if (demonTalk) { const r = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); r.addColorStop(0, 'rgba(120,0,0,0)'); r.addColorStop(1, 'rgba(120,0,0,.32)'); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H); }
   // heads to screen space for dialogue
   const z = cam.zoom; const sc = {};
@@ -213,7 +213,7 @@ function getCues() {
     if (shot.card && shot.card.style === 'cta') { add(s0 + 1.35, 'click', .8); add(s0 + 2.35, 'click', .8); }
     for (const l of shot.lines || []) {
       const demon = (FILM.cast[l.who] || {}).kind === 'demon';
-      if (demon) { add(s0 + (l.at ?? 0) - .15, 'whoosh', .5); add(s0 + (l.at ?? 0), 'drone', .7); }
+      if (demon && /[a-z]/i.test(l.text)) { add(s0 + (l.at ?? 0) - .15, 'whoosh', .5); add(s0 + (l.at ?? 0), 'drone', .7); }
     }
     for (const a of shot.actors || []) {
       const kind = (FILM.cast[a.id] || {}).kind || a.kind;
