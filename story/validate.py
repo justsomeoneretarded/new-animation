@@ -80,6 +80,13 @@ def repair(film: dict) -> tuple[dict, list[str]]:
                     s['dur'] = round(min(9, need), 2)
             elif ty is not None:
                 ph.pop('typing')
+            empty = {'chat': not ph.get('messages') and not ph.get('typing'), 'lock': not ph.get('notifications'),
+                     'call': False, 'feed': False, 'alarm': False}.get(ph['app'], False)
+            if empty:
+                # a blank screen tells the viewer nothing: show a waiting notification instead
+                ph['app'] = 'lock'
+                ph['notifications'] = [{'app': 'Messages', 'text': f"{ph.get('contact') or 'new message'}", 'at': .4}]
+                notes.append(f'shot {i}: empty phone screen -> lock screen notification')
         if isinstance(s.get('card'), dict):
             cd = s['card']
             if cd.get('style') not in CARD_STYLES:
@@ -100,6 +107,8 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             if a.get('pose') not in VOCAB['poses']:
                 if a.get('pose'):
                     notes.append(f'shot {i}: pose {a.get("pose")!r} -> stand')
+                a['pose'] = 'stand'
+            if a['pose'] in ('lean', 'grab') and cast.get(aid, {}).get('kind') != 'demon' and not a.get('target'):
                 a['pose'] = 'stand'
             if a.get('mood') not in VOCAB['moods']:
                 a.pop('mood', None)

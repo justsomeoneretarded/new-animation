@@ -123,7 +123,9 @@ SPOTS per set: {json.dumps({k: s['spots'] for k, s in v['sets'].items()})}
 RULES: frame "phone" needs "phone" and shows only the phone (no actors). Seats: {json.dumps({k: s.get('seat') for k, s in v['sets'].items() if s.get('seat')})}.
 Vary framing like a film editor: never more than two "wide" shots in a row; use "close" for reactions, "extreme" for the decision,
 "two" when the demon or a friend is next to the hero, "phone" whenever a message, call, alarm or feed matters.
-The demon stands right next to the hero (x within 10-14) when it speaks, using pose lean or grab with target "hero"."""
+The demon stands right next to the hero (x within 10-14) when it speaks, using pose lean or grab with target "hero".
+Every "phone" shot must show something specific: messages, a typed reply, notifications, a call or an alarm.
+A friend or family member must appear in the payoff on screen (use their cast id), not only on the phone."""
 
 
 def shots_for_beat(beat, i, n, sheet, fid, example):
