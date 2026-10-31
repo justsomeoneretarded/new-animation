@@ -86,6 +86,7 @@ jobs:
           python story/validate.py build/film.json | tee build/validation.txt
           echo "duration=$(python -c "import json;print(json.load(open('build/film.json'))['duration'])")" >> "$GITHUB_OUTPUT"
           { echo '### Story'; cat build/story.md; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Story::$(sed -e 's/%/%25/g' build/story.md | head -c 30000 | sed ':a;N;$!ba;s/\n/%0A/g')"
       - uses: actions/upload-artifact@v4
         with:
           name: film-plan
