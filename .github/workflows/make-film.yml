@@ -94,6 +94,14 @@ jobs:
             build/story.md
             build/validation.txt
           retention-days: 3
+      - name: Keep the model log (also when writing fails)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-log
+          path: build/model-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
   music:
     name: Compose the score

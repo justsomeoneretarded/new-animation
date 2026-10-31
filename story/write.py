@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -42,20 +43,43 @@ FORMULA = """THE FORMAT (study of Day One Films shorts such as "Loneliness" and 
 """
 
 
-def chat(system: str, user: str, temperature=.7, num_predict=3000) -> dict:
-    body = json.dumps({'model': MODEL, 'stream': False, 'format': 'json',
+LOG = None
+
+
+def chat(system: str, user: str, temperature=.7, num_predict=3000, schema=None) -> dict:
+    body = json.dumps({'model': MODEL, 'stream': False, 'think': False, 'keep_alive': '30m', 'format': schema or 'json',
                        'options': {'temperature': temperature, 'num_ctx': 16384, 'num_predict': num_predict},
-                       'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]}).encode()
+                       'messages': [{'role': 'system', 'content': system + '\nReturn only valid JSON. /no_think'},
+                                    {'role': 'user', 'content': user}]}).encode()
     for attempt in range(3):
+        text = ''
         try:
             req = urllib.request.Request(OLLAMA + '/api/chat', body, {'Content-Type': 'application/json'})
             with urllib.request.urlopen(req, timeout=3600) as r:
                 text = json.loads(r.read())['message']['content']
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.S)
             return json.loads(text[text.index('{'):text.rindex('}') + 1])
         except Exception as exc:  # noqa: BLE001
-            print(f'  model call failed ({type(exc).__name__}: {exc}); retry {attempt + 1}', flush=True)
+            print(f'  model call failed ({type(exc).__name__}: {str(exc)[:200]}); retry {attempt + 1}', flush=True)
+            snippet = (text[:350] or '(empty reply)').replace('%', '%25').replace('\n', '%0A')
+            print(f'::warning title=Model reply was not JSON ({type(exc).__name__})::{snippet}', flush=True)
+            if LOG:
+                with open(LOG, 'a') as f:
+                    f.write(f'--- failed attempt {attempt + 1}: {type(exc).__name__}: {exc}\n{text[:4000]}\n')
             time.sleep(3)
     raise RuntimeError('the script model did not return usable JSON')
+
+
+BEAT_SCHEMA = {
+    'type': 'object', 'required': ['title', 'logline', 'hud_label', 'friend', 'music_prompt', 'beats', 'quote', 'red_card'],
+    'properties': {
+        'title': {'type': 'string'}, 'logline': {'type': 'string'}, 'hud_label': {'type': 'string'}, 'music_prompt': {'type': 'string'},
+        'friend': {'type': 'object', 'properties': {'name': {'type': 'string'}, 'hat': {'type': 'string'}}, 'required': ['name', 'hat']},
+        'quote': {'type': 'array', 'items': {'type': 'string'}}, 'red_card': {'type': 'array', 'items': {'type': 'string'}},
+        'beats': {'type': 'array', 'items': {'type': 'object', 'required': ['name', 'seconds', 'where', 'what_happens'], 'properties': {
+            'name': {'type': 'string'}, 'seconds': {'type': 'number'}, 'where': {'type': 'string'}, 'time': {'type': 'string'},
+            'weather': {'type': 'string'}, 'what_happens': {'type': 'string'}, 'counter': {'type': 'number'}, 'chapter': {'type': 'string'},
+            'relapse': {'type': 'boolean'}, 'demon_line': {'type': 'string'}, 'dialogue': {'type': 'string'}, 'phone': {'type': 'string'}}}}}}
 
 
 def beat_sheet(title, brief, seconds, counter):
@@ -72,7 +96,7 @@ You write the beat sheet. Reply with JSON only:
 Write 11-14 beats whose seconds add up to the target length minus 12 seconds for the cards.
 SETS: """ + ', '.join(f'{k} ({v["about"]})' for k, v in VOCAB['sets'].items())
     user = f'Title: {title}\nBrief: {brief}\nTarget length: {seconds} seconds\n' + (f'Counter label to use: {counter}\n' if counter else '')
-    return chat(system, user, .85, 2500)
+    return chat(system, user, .85, 4000, BEAT_SCHEMA)
 
 
 def shot_schema():
@@ -111,14 +135,19 @@ Shot durations in this beat should add up to about {beat.get('seconds', 8)} seco
 Example shots from another film in this format (follow the style and the JSON shape, not the story):
 {example}"""
     user = f"Beat {i + 1} of {n}: {json.dumps(beat, ensure_ascii=False)}"
-    out = chat(system, user, .55, 2600)
+    out = chat(system, user, .55, 3500)
     return out.get('shots') or []
 
 
 def write(title, brief, seconds, counter, out_path):
+    global LOG
     t0 = time.time()
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    LOG = Path(out_path).with_name('model-log.txt')
     print(f'Writing with {MODEL}: beat sheet', flush=True)
     sheet = beat_sheet(title, brief, seconds, counter)
+    with open(LOG, 'a') as f:
+        f.write('--- beat sheet\n' + json.dumps(sheet, indent=1, ensure_ascii=False) + '\n')
     beats = sheet.get('beats') or []
     if len(beats) < 6:
         raise RuntimeError(f'beat sheet too short ({len(beats)} beats)')
