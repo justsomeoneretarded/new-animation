@@ -126,56 +126,91 @@ Vary framing like a film editor: never more than two "wide" shots in a row; use 
 The demon stands right next to the hero (x within 10-14) when it speaks, using pose lean or grab with target "hero"."""
 
 
-def shots_for_beat(beat, i, n, state, sheet, example):
+def shots_for_beat(beat, i, n, sheet, fid, example):
+    # The system prompt is identical for every beat so Ollama can reuse its prompt cache;
+    # everything that changes goes in the user message.
     system = FORMULA + '\n' + shot_schema() + f"""
 You are the storyboard artist. Turn ONE beat into 2-4 shots. Reply with JSON only: {{"shots": [ ...shot objects... ]}}.
-Cast ids: hero, demon, {state['friend_id']}{', and background extras with ids extra1, extra2 (kind extra)' if True else ''}.
-Counter label: "{sheet.get('hud_label', '')}". The counter is currently {state['counter']} and the chapter is "{state['chapter']}".
-Shot durations in this beat should add up to about {beat.get('seconds', 8)} seconds.
+Cast ids: hero, demon, {fid}, and background extras extra1, extra2.
+Counter label: "{sheet.get('hud_label', '')}". Shot durations in a beat add up to about the beat's seconds.
 Example shots from another film in this format (follow the style and the JSON shape, not the story):
 {example}"""
-    user = f"Beat {i + 1} of {n}: {json.dumps(beat, ensure_ascii=False)}"
-    out = chat(system, user, .55, 3500)
-    return out.get('shots') or []
+    user = (f"Beat {i + 1} of {n}. Counter value in this beat: {beat.get('counter', '')}; chapter: \"{beat.get('chapter', '')}\"; "
+            f"relapse (counter shown red): {bool(beat.get('relapse'))}.\n{json.dumps(beat, ensure_ascii=False)}")
+    out = chat(system, user, .55, 3000)
+    shots = out.get('shots') or []
+    for s in shots:
+        s.setdefault('set', beat.get('where'))
+        if beat.get('time'):
+            s.setdefault('time', beat['time'])
+        if beat.get('weather') and beat['weather'] != 'none':
+            s.setdefault('weather', beat['weather'])
+    return shots
 
 
-def write(title, brief, seconds, counter, out_path):
+def friend_id(sheet):
+    friend = sheet.get('friend') or {}
+    fid = ''.join(ch for ch in str(friend.get('name') or 'sam').lower() if ch.isalpha())[:10] or 'sam'
+    return 'sam' if fid in ('hero', 'demon', 'extra') else fid
+
+
+def example_shots():
+    film = json.loads((ROOT / 'examples' / 'the-sketchbook.json').read_text())
+    return json.dumps([film['shots'][k] for k in (2, 6, 11, 15, 17, 18, 26, 27)], ensure_ascii=False)
+
+
+def stage_beats(title, brief, seconds, counter, out_dir):
     global LOG
+    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True); LOG = out_dir / 'model-log.txt'
     t0 = time.time()
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    LOG = Path(out_path).with_name('model-log.txt')
-    print(f'Writing with {MODEL}: beat sheet', flush=True)
+    print(f'Writing the beat sheet with {MODEL}', flush=True)
     sheet = beat_sheet(title, brief, seconds, counter)
-    with open(LOG, 'a') as f:
-        f.write('--- beat sheet\n' + json.dumps(sheet, indent=1, ensure_ascii=False) + '\n')
     beats = sheet.get('beats') or []
     if len(beats) < 6:
         raise RuntimeError(f'beat sheet too short ({len(beats)} beats)')
-    friend = sheet.get('friend') or {}
-    fid = ''.join(ch for ch in str(friend.get('name') or 'sam').lower() if ch.isalpha())[:10] or 'sam'
-    if fid in ('hero', 'demon'):
-        fid = 'sam'
-    example_film = json.loads((ROOT / 'examples' / 'the-sketchbook.json').read_text())
-    example = json.dumps([example_film['shots'][k] for k in (2, 6, 11, 15, 17, 18, 26, 27)], ensure_ascii=False)
-    state = {'counter': 0, 'chapter': '', 'friend_id': fid}
-    shots = []
+    sheet['_title'], sheet['_counter'] = title, counter
+    (out_dir / 'beats.json').write_text(json.dumps(sheet, indent=1, ensure_ascii=False))
+    print(f'{len(beats)} beats in {(time.time() - t0) / 60:.1f} min', flush=True)
+    print('::notice title=Beat sheet::' + ' | '.join(f"{b.get('name')}: {b.get('what_happens')}" for b in beats)[:4000].replace('\n', ' '))
+    return sheet
+
+
+def stage_shots(out_dir, part, parts):
+    global LOG
+    out_dir = Path(out_dir); LOG = out_dir / f'model-log-{part}.txt'
+    sheet = json.loads((out_dir / 'beats.json').read_text())
+    beats = sheet['beats']; fid = friend_id(sheet); ex = example_shots()
+    result = {}
     for i, beat in enumerate(beats):
-        print(f'  beat {i + 1}/{len(beats)}: {beat.get("name", "")}  ({(time.time() - t0) / 60:.1f} min)', flush=True)
+        if i % parts != part:
+            continue
+        t0 = time.time()
         try:
-            new = shots_for_beat(beat, i, len(beats), state, sheet, example)
+            result[i] = shots_for_beat(beat, i, len(beats), sheet, fid, ex)
         except RuntimeError as exc:
-            print(f'  skipped beat: {exc}', flush=True); continue
-        for s in new:
-            s.setdefault('set', beat.get('where'))
-            if beat.get('time'):
-                s.setdefault('time', beat['time'])
-            if beat.get('weather') and beat['weather'] != 'none':
-                s.setdefault('weather', beat['weather'])
-        shots.extend(new)
-        if isinstance(beat.get('counter'), (int, float)):
-            state['counter'] = beat['counter']
-        if beat.get('chapter'):
-            state['chapter'] = beat['chapter']
+            print(f'  beat {i + 1} skipped: {exc}', flush=True); result[i] = []
+        print(f'  beat {i + 1}/{len(beats)}: {len(result[i])} shots in {(time.time() - t0) / 60:.1f} min', flush=True)
+    (out_dir / f'shots-{part}.json').write_text(json.dumps(result, ensure_ascii=False))
+
+
+def stage_merge(out_dir, out_path):
+    out_dir = Path(out_dir)
+    sheet = json.loads((out_dir / 'beats.json').read_text())
+    per_beat = {}
+    for f in sorted(out_dir.glob('shots-*.json')):
+        per_beat.update({int(k): v for k, v in json.loads(f.read_text()).items()})
+    shots = [s for i in sorted(per_beat) for s in per_beat[i]]
+    missing = [i + 1 for i in range(len(sheet['beats'])) if not per_beat.get(i)]
+    if missing:
+        print(f'::warning title=Beats without shots::{missing}')
+    if len(shots) < 8:
+        raise RuntimeError(f'only {len(shots)} shots were written')
+    return assemble(sheet, shots, out_path)
+
+
+def assemble(sheet, shots, out_path):
+    title, counter = sheet.get('_title', ''), sheet.get('_counter', '')
+    fid = friend_id(sheet); friend = sheet.get('friend') or {}
     q = sheet.get('quote') or []
     r = sheet.get('red_card') or []
     if len(q) >= 2:
@@ -191,16 +226,24 @@ def write(title, brief, seconds, counter, out_path):
         'cast': {'hero': {'kind': 'hero'}, 'demon': {'kind': 'demon'},
                  fid: {'kind': 'friend', 'hat': friend.get('hat') or 'beanie_orange', 'skin': '#d9c6a6'},
                  'extra1': {'kind': 'extra', 'hat': 'beanie_green'}, 'extra2': {'kind': 'extra', 'hat': 'cap_grey'}},
-        'shots': shots, 'beats': beats,
+        'shots': shots, 'beats': sheet.get('beats'),
     }
     film, notes = repair(film)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(json.dumps(film, indent=1, ensure_ascii=False))
     script_md(film, Path(out_path).with_name('story.md'))
-    print(f'{film["title"]}: {len(film["shots"])} shots, {film["duration"]} s, written in {(time.time() - t0) / 60:.1f} min')
+    print(f'{film["title"]}: {len(film["shots"])} shots, {film["duration"]} s')
     for n in notes:
         print(' -', n)
     return film
+
+
+def write(title, brief, seconds, counter, out_path):
+    """Everything in one process (local use)."""
+    d = Path(out_path).parent
+    stage_beats(title, brief, seconds, counter, d)
+    stage_shots(d, 0, 1)
+    return stage_merge(d, out_path)
 
 
 def script_md(film, path):
@@ -229,8 +272,17 @@ def script_md(film, path):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--title', required=True); ap.add_argument('--brief', required=True)
+    ap.add_argument('--stage', choices=['all', 'beats', 'shots', 'merge'], default='all')
+    ap.add_argument('--title', default=''); ap.add_argument('--brief', default='')
     ap.add_argument('--seconds', type=float, default=120); ap.add_argument('--counter', default='')
-    ap.add_argument('--out', required=True)
+    ap.add_argument('--dir', default='build/writing'); ap.add_argument('--part', type=int, default=0); ap.add_argument('--parts', type=int, default=1)
+    ap.add_argument('--out', default='build/film.json')
     a = ap.parse_args()
-    write(a.title, a.brief, a.seconds, a.counter.strip(), a.out)
+    if a.stage == 'all':
+        write(a.title, a.brief, a.seconds, a.counter.strip(), a.out)
+    elif a.stage == 'beats':
+        stage_beats(a.title, a.brief, a.seconds, a.counter.strip(), a.dir)
+    elif a.stage == 'shots':
+        stage_shots(a.dir, a.part, a.parts)
+    else:
+        stage_merge(a.dir, a.out)

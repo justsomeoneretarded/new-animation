@@ -56,7 +56,7 @@ You can also serve the repo (`python -m http.server`) and open `engine/index.htm
 
 | Part | File | Notes |
 |---|---|---|
-| Writer | `story/write.py` | Beat sheet first (the format's 13-step structure), then 2–4 shots per beat. |
+| Writer | `story/write.py` | Beat sheet first (the format's 13-step structure), then 2–4 shots per beat, written on four runners in parallel. |
 | Validator | `story/validate.py` | Keeps every shot inside the engine's vocabulary. |
 | Character rig | `engine/character.js` | One body and head blob, two-bone arm and leg IK, 12 moods, 21 poses, hats, held props. |
 | Sets | `engine/sets.js` | 11 dark line-art sets with light pools, weather and time of day; desks and café tables sit in the foreground. |

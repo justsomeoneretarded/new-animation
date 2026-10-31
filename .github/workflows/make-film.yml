@@ -40,12 +40,12 @@ env:
   PYTHONUNBUFFERED: '1'
 
 jobs:
-  write:
-    name: Write the film
+  beats:
+    name: Write the beat sheet
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 120
     outputs:
-      duration: ${{ steps.done.outputs.duration }}
+      mode: ${{ steps.mode.outputs.mode }}
     env:
       SCRIPT_MODEL: ${{ inputs.script_model }}
       OLLAMA_HOST: 127.0.0.1:11435
@@ -53,6 +53,7 @@ jobs:
       OLLAMA_MODELS: ${{ github.workspace }}/build/ollama-models
       OLLAMA_NUM_PARALLEL: '1'
       OLLAMA_FLASH_ATTENTION: '1'
+      OLLAMA_KV_CACHE_TYPE: q8_0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,15 +67,77 @@ jobs:
       - name: Prepare the local script model
         if: steps.mode.outputs.mode == 'write'
         run: bash scripts/bootstrap_ollama.sh
-      - name: Write the story and shot list
+      - name: Write the beat sheet
         if: steps.mode.outputs.mode == 'write'
         env:
           TITLE: ${{ inputs.title }}
           BRIEF: ${{ inputs.brief }}
           COUNTER: ${{ inputs.counter }}
-        run: python story/write.py --title "$TITLE" --brief "$BRIEF" --seconds "${{ inputs.seconds }}" --counter "$COUNTER" --out build/film.json
+        run: python story/write.py --stage beats --title "$TITLE" --brief "$BRIEF" --seconds "${{ inputs.seconds }}" --counter "$COUNTER" --dir build/writing
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: writing-beats
+          path: build/writing/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  shots:
+    name: Storyboard part ${{ matrix.part }}
+    needs: beats
+    if: needs.beats.outputs.mode == 'write'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3]
+    env:
+      SCRIPT_MODEL: ${{ inputs.script_model }}
+      OLLAMA_HOST: 127.0.0.1:11435
+      OLLAMA_URL: http://127.0.0.1:11435
+      OLLAMA_MODELS: ${{ github.workspace }}/build/ollama-models
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_FLASH_ATTENTION: '1'
+      OLLAMA_KV_CACHE_TYPE: q8_0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@v4
+        with: { name: writing-beats, path: build/writing }
+      - name: Prepare the local script model
+        run: bash scripts/bootstrap_ollama.sh
+      - name: Storyboard this part's beats
+        run: python story/write.py --stage shots --dir build/writing --part ${{ matrix.part }} --parts 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: writing-shots-${{ matrix.part }}
+          path: build/writing/*-${{ matrix.part }}.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  write:
+    name: Assemble and check the shot list
+    needs: [beats, shots]
+    if: ${{ always() && needs.beats.result == 'success' && (needs.beats.outputs.mode != 'write' || needs.shots.result != 'cancelled') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      duration: ${{ steps.done.outputs.duration }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@v4
+        if: needs.beats.outputs.mode == 'write'
+        with: { pattern: 'writing-*', path: build/writing, merge-multiple: true }
+      - name: Merge the storyboard
+        if: needs.beats.outputs.mode == 'write'
+        run: python story/write.py --stage merge --dir build/writing --out build/film.json
       - name: Use an existing shot list
-        if: steps.mode.outputs.mode != 'write'
+        if: needs.beats.outputs.mode != 'write'
         env:
           FILM_FILE: ${{ inputs.film_file || 'examples/the-sketchbook.json' }}
         run: |
@@ -95,19 +158,11 @@ jobs:
             build/story.md
             build/validation.txt
           retention-days: 3
-      - name: Keep the model log (also when writing fails)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: writer-log
-          path: build/model-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
 
   music:
     name: Compose the score
     needs: write
-    if: ${{ inputs.score }}
+    if: ${{ always() && needs.write.result == 'success' && inputs.score }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     continue-on-error: true
@@ -158,6 +213,7 @@ jobs:
   picture:
     name: Picture part ${{ matrix.part }}
     needs: write
+    if: ${{ always() && needs.write.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
