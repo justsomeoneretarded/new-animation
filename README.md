@@ -1,67 +1,68 @@
-# Am I enough?
+# new-animation
 
-An original 90-second animated short about trying to reach a standard that keeps moving. An ivory character with a teal scarf works, runs and builds a literal tower of achievements beneath a line marked **ENOUGH**. A quiet invitation offers another way to spend the evening.
+Day One-style animated shorts from a written brief: a cream blob hero, a black shadow with red eyes that says the cruel thing out loud, an on-screen counter the viewer can track, phone screens, a relapse, a payoff, a quote card and a red call to action.
 
-## Watch the finished film
+Everything runs free on GitHub Actions: a local script model (Gemma through Ollama), a browser-canvas animation engine rendered by headless Chromium, ACE-Step for an original score, and synthesized sound effects.
 
-**[Download the first complete cut](https://github.com/justsomeoneretarded/new-animation/actions/runs/39749049154/artifacts/12412153526)** — unzip and open `Am-I-enough.mp4`. [Verified workflow run](https://github.com/justsomeoneretarded/new-animation/actions/runs/39749049154) completed in approximately 3 minutes, including parallel rendering, original sound synthesis, assembly, validation and upload. This is one measured run, not a guarantee of future queue or execution time.
+## Make a film
 
-Open this repository’s **Actions** tab, select the latest successful **Render Am I enough** run, and download **Am-I-enough-complete-film** under Artifacts. Unzip it and open `Am-I-enough.mp4`.
+**Actions → Make film → Run workflow**
 
-The artifact also contains a storyboard, poster, production script, stereo soundtrack, timing log and validation results. Editable audio stems are available in a separate artifact. Artifacts expire after the retention period; download a copy you want to keep.
+| Input | What it does |
+|---|---|
+| Title | The video title. |
+| Brief | The struggle, who the hero is, what the demon says, how it ends. Leave empty to render the example film. |
+| Target length | 90–180 seconds. |
+| Counter | Optional label such as `Words said today` or `Days clean`. The writer picks one if empty. |
+| Film file | Render a shot list that is already in the repo instead of writing one, e.g. `examples/the-sketchbook.json`. |
+| Script model | `gemma4:12b` writes better; `gemma4:e4b` is faster. |
+| Score | Compose an original score with ACE-Step. Without it, a synthesized piano bed is used. |
 
-## Render on GitHub Actions
+Download the **film** artifact. It contains the MP4, `story.md` (the script, shot by shot), `film.json` (the shot list), `contact-sheet.jpg`, `thumbnail-frame.jpg` and the soundtrack WAV.
 
-The first push containing the workflow starts a full-HD render. To render again:
+A brief that works well is specific and physical:
 
-1. Open **Actions → Render Am I enough → Run workflow**.
-2. Select `1920` for 1080p, or `1280` for a faster 720p review.
-3. Wait for the three picture jobs and finishing job to succeed.
-4. Download the finished-film artifact.
+> A guy who hasn't talked to anyone in weeks. The demon tells him nobody wants to hear from him. A coworker invites him to a run club. He goes once, relapses, then keeps showing up. Counter: words said today.
 
-No secrets, paid APIs, GPU, external model or asset downloads are required. The workflow uses Ubuntu’s CPU runners. GitHub’s account limits, runner availability and artifact storage policies still apply; software being free does not remove those limits.
+## Editing a film by hand
 
-## Run locally
+The run summary shows the script. To change something, copy `film.json` from the artifact into the repo (for example `films/my-film.json`), edit it, and run the workflow with **Film file** set to that path. Writing is skipped, so the render only takes minutes.
 
-Requirements: Python 3.12 and DejaVu fonts. FFmpeg is supplied by a pinned Python wheel, avoiding slow system-package mirror updates in GitHub Actions. On Ubuntu:
+A shot looks like this:
 
-```bash
-sudo apt-get install fonts-dejavu-core
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m film.build --width 1920 --out build/final
+```json
+{"dur": 3.8, "set": "street", "weather": "rain", "hud": {"value": 1, "chapter": "Thursday"},
+ "camera": {"frame": "two", "on": "hero"},
+ "actors": [{"id": "demon", "x": 50, "pose": "grab", "target": "hero"},
+            {"id": "hero", "x": 60, "pose": "stand", "mood": "worried", "hold": "bag"}],
+ "lines": [{"who": "demon", "text": "they'll laugh at you.", "at": 0.8}]}
 ```
 
-For a quick storyboard:
+Every option (sets, poses, moods, frames, phone apps, items and sound effects) is listed in [`engine/vocab.json`](engine/vocab.json). `story/validate.py` repairs anything the engine can't draw, so a film always renders.
+
+## Preview locally
 
 ```bash
-python -m film.render --stills --width 1280 --out build/review
+npm install && npx playwright install chromium
+node render/render.mjs --film examples/the-sketchbook.json --stills build/stills --every 2 --width 1280   # review frames
+node render/render.mjs --film examples/the-sketchbook.json --out build/picture.mp4                        # picture
+node render/render.mjs --film examples/the-sketchbook.json --cues build/cues.json
+python audio/sound.py --cues build/cues.json --out build/soundtrack.wav                                   # sound
 ```
 
-For a specific section:
+You can also serve the repo (`python -m http.server`) and open `engine/index.html?film=../examples/the-sketchbook.json` to watch the film play live in a browser.
 
-```bash
-python -m film.render --start 46 --end 55 --width 1280 --out build/review
-```
+## How it works
 
-## Production design
+| Part | File | Notes |
+|---|---|---|
+| Writer | `story/write.py` | Beat sheet first (the format's 13-step structure), then 2–4 shots per beat. |
+| Validator | `story/validate.py` | Keeps every shot inside the engine's vocabulary. |
+| Character rig | `engine/character.js` | One body and head blob, two-bone arm and leg IK, 12 moods, 21 poses, hats, held props. |
+| Sets | `engine/sets.js` | 11 dark line-art sets with light pools, weather and time of day; desks and café tables sit in the foreground. |
+| Phone, HUD, text | `engine/overlay.js` | Chat (typing that gets deleted or sent), calls, lock screen, feed, alarm; counter; red demon text; cards. |
+| Camera | `engine/main.js` | Wide, medium, close, extreme, two-shot and phone framing; background blur on close shots; red glow on the demon; grain and vignette. |
+| Sound | `audio/sound.py` | Effects and ambience come from the picture (footsteps, typing, notifications, demon drone, rain). Music follows each shot's level, ducks under the demon and is mastered to −14 LUFS. |
+| Score | `audio/music.py` | ACE-Step 1.5 on CPU, with the film's own music prompt. |
 
-- **90 seconds, 1920×1080, 24 fps**. Character poses principally update at 12 fps; cameras, weather, text and effects can move at the delivery rate.
-- Articulated original vector characters; separate expressions and hand targets; reusable rooms, street and café; camera reframing; glass reflections; moving text; atmosphere; original typography treatment.
-- A silent story with text, music and effects, **no narrator**.
-- An original procedural score and independently synthesized foley. No audio from the reference videos is reused. The music uses struck-string and sustained bowed-like synthesis, not recordings of acoustic performers.
-- Separate music, ambience and foley stems. Two-pass loudness normalization targets −16 LUFS and −1.5 dBTP before AAC delivery.
-- Complete FFmpeg decode plus frame count, duration, stereo audio and loudness checks.
-
-The renderer uses **Python, Pillow, aggdraw, NumPy, SciPy and FFmpeg**, rather than a 3D engine. This is deliberately layered 2D artwork, allowing CPU-only reproducible builds. It does not create a Blender `.blend` project.
-
-## Edit and make further films
-
-`film/story.py` owns shot timing and story purpose. `film/art.py` owns the drawing primitives, environments, palette and character controls. `film/render.py` stages each shot and camera. `film/audio.py` owns the score, sound synthesis and cue timing. `film/build.py` assembles and validates the delivery.
-
-This is a reusable production codebase, not an automatic “type any concept and receive a finished movie” generator. A different story needs deliberate shot design, acting and sound cues.
-
-## Rights and credits
-
-Story, generated drawings, animation code and synthesized composition were created for this project. Reference films informed a general production target; their characters, images, music and recordings are not bundled. DejaVu fonts remain under their own license (installed by the OS, not copied into this repository). See `THIRD_PARTY.md` for tool licenses. This repository does not grant a separate public license to the original film or its artwork.
+Fonts: Patrick Hand and Share Tech Mono (SIL Open Font License) are downloaded during the run.

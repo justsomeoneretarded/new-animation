@@ -1,0 +1,230 @@
+name: Make film
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: Video title
+        default: The Sketchbook
+      brief:
+        description: 'Brief: the struggle, who the hero is, what the demon says, how it ends. Leave empty to render the example film.'
+        default: ''
+      seconds:
+        description: Target length in seconds
+        type: choice
+        options: ['90', '120', '150', '180']
+        default: '120'
+      counter:
+        description: 'On-screen counter label, e.g. "Words said today" (optional; the writer picks one if empty)'
+        default: ''
+      film_file:
+        description: 'Or render a shot list already in the repo (e.g. examples/the-sketchbook.json). Overrides the brief.'
+        default: ''
+      script_model:
+        description: Local script model (Ollama)
+        type: choice
+        options: ['gemma4:12b', 'gemma4:e4b']
+        default: 'gemma4:12b'
+      score:
+        description: Compose an original score with ACE-Step (about 30-60 min extra)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: film-${{ github.run_id }}
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  write:
+    name: Write the film
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      duration: ${{ steps.done.outputs.duration }}
+    env:
+      SCRIPT_MODEL: ${{ inputs.script_model }}
+      OLLAMA_HOST: 127.0.0.1:11435
+      OLLAMA_URL: http://127.0.0.1:11435
+      OLLAMA_MODELS: ${{ github.workspace }}/build/ollama-models
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_FLASH_ATTENTION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Choose the source
+        id: mode
+        run: |
+          if [ -n "${{ inputs.film_file }}" ]; then echo "mode=file" >> "$GITHUB_OUTPUT";
+          elif [ -z "${{ inputs.brief }}" ]; then echo "mode=example" >> "$GITHUB_OUTPUT";
+          else echo "mode=write" >> "$GITHUB_OUTPUT"; fi
+      - name: Prepare the local script model
+        if: steps.mode.outputs.mode == 'write'
+        run: bash scripts/bootstrap_ollama.sh
+      - name: Write the story and shot list
+        if: steps.mode.outputs.mode == 'write'
+        env:
+          TITLE: ${{ inputs.title }}
+          BRIEF: ${{ inputs.brief }}
+          COUNTER: ${{ inputs.counter }}
+        run: python story/write.py --title "$TITLE" --brief "$BRIEF" --seconds "${{ inputs.seconds }}" --counter "$COUNTER" --out build/film.json
+      - name: Use an existing shot list
+        if: steps.mode.outputs.mode != 'write'
+        env:
+          FILM_FILE: ${{ inputs.film_file || 'examples/the-sketchbook.json' }}
+        run: |
+          mkdir -p build && cp "$FILM_FILE" build/film.json
+          python -c "import sys,json; sys.path.insert(0,'story'); from write import script_md; from pathlib import Path; script_md(json.load(open('build/film.json')), Path('build/story.md'))"
+      - name: Check and repair the shot list
+        id: done
+        run: |
+          python story/validate.py build/film.json | tee build/validation.txt
+          echo "duration=$(python -c "import json;print(json.load(open('build/film.json'))['duration'])")" >> "$GITHUB_OUTPUT"
+          { echo '### Story'; cat build/story.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film-plan
+          path: |
+            build/film.json
+            build/story.md
+            build/validation.txt
+          retention-days: 3
+
+  music:
+    name: Compose the score
+    needs: write
+    if: ${{ inputs.score }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    continue-on-error: true
+    env:
+      ACESTEP_INIT_LLM: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: film-plan, path: build }
+      - name: Free runner disk for the music model
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install system libraries
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg libsndfile1 >/dev/null
+      - name: Install ACE-Step 1.5 (CPU)
+        shell: bash
+        run: |
+          set -o pipefail
+          git clone --depth 1 https://github.com/ACE-Step/ACE-Step-1.5 "$RUNNER_TEMP/acestep"
+          python -m pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -3
+          cd "$RUNNER_TEMP/acestep"
+          python - <<'INSTALL'
+          import collections, subprocess, sys, tomllib
+          deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]
+          skip = ("torch==", "torch>", "torch;", "torchvision", "torchaudio", "nano-vllm", "mlx")
+          keep = [d for d in deps if not d.replace(" ", "").lower().startswith(skip) and d.split(";")[0].strip().lower() != "torch"]
+          locked = collections.defaultdict(set)
+          for package in tomllib.load(open("uv.lock", "rb"))["package"]:
+              if "version" in package and "editable" not in package.get("source", {}) and "path" not in package.get("source", {}):
+                  locked[package["name"]].add(package["version"].split("+")[0])
+          pins = [f"{name}=={next(iter(versions))}" for name, versions in sorted(locked.items())
+                  if len(versions) == 1 and not name.startswith(("nvidia", "triton", "nano-vllm", "flash"))]
+          open("cpu-constraints.txt", "w").write("\n".join(pins) + "\n")
+          for dep in keep:
+              subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-c", "cpu-constraints.txt", dep], capture_output=True)
+          INSTALL
+          python -m pip install -q --no-deps -e . 2>&1 | tail -3
+      - name: Generate the score
+        run: python audio/music.py "$RUNNER_TEMP/acestep" build/film.json build/music.wav
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film-music
+          path: build/music.wav
+          if-no-files-found: ignore
+          retention-days: 2
+
+  picture:
+    name: Picture part ${{ matrix.part }}
+    needs: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: film-plan, path: build }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install the renderer
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends ffmpeg >/dev/null
+          bash scripts/fetch_fonts.sh
+      - name: Render frames
+        run: |
+          D=${{ needs.write.outputs.duration }}
+          START=$(python3 -c "print($D*${{ matrix.part }}/4)"); END=$(python3 -c "print($D*(${{ matrix.part }}+1)/4)")
+          node render/render.mjs --film build/film.json --out build/part-${{ matrix.part }}.mp4 --start $START --end $END --width 1920 --fps 30
+      - name: Sound cue sheet and review stills
+        if: matrix.part == 0
+        run: |
+          node render/render.mjs --film build/film.json --cues build/cues.json
+          node render/render.mjs --film build/film.json --stills build/stills --every 2.5 --width 640
+          ffmpeg -v error -pattern_type glob -i 'build/stills/*.jpg' -vf "tile=6x10" -frames:v 1 build/contact-sheet.jpg
+          node render/render.mjs --film build/film.json --stills build/poster --times "$(python3 scripts/poster_time.py build/film.json)" --width 1920
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film-part-${{ matrix.part }}
+          path: |
+            build/part-*.mp4
+            build/cues.json
+            build/contact-sheet.jpg
+            build/poster/*.jpg
+          retention-days: 2
+
+  finish:
+    name: Sound, edit and package
+    needs: [write, picture, music]
+    if: ${{ always() && needs.picture.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'film-*', path: build, merge-multiple: true }
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg >/dev/null
+          python -m pip install -q numpy scipy
+      - name: Mix the soundtrack
+        run: python audio/sound.py --cues build/cues.json --music build/music.wav --out build/soundtrack.wav | tee build/sound.txt
+      - name: Assemble the film
+        run: |
+          for i in 0 1 2 3; do echo "file 'part-$i.mp4'" ; done > build/parts.txt
+          ffmpeg -y -v error -f concat -safe 0 -i build/parts.txt -c copy build/picture.mp4
+          SLUG=$(python3 -c "import json,re;print(re.sub(r'[^a-z0-9]+','-',json.load(open('build/film.json'))['title'].lower()).strip('-') or 'film')")
+          mkdir -p out
+          ffmpeg -y -v error -i build/picture.mp4 -i build/soundtrack.wav -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 256k -shortest -movflags +faststart "out/$SLUG.mp4"
+          cp build/film.json build/story.md build/contact-sheet.jpg build/soundtrack.wav out/
+          cp build/poster/*.jpg out/thumbnail-frame.jpg
+          ffprobe -v error -show_entries format=duration:stream=codec_type,width,height -of compact "out/$SLUG.mp4" | tee build/probe.txt
+          ffmpeg -v error -i "out/$SLUG.mp4" -f null - && echo "full decode: ok"
+          {
+            echo "### $(python3 -c "import json;print(json.load(open('build/film.json'))['title'])")"
+            echo "Download **film** below. Music: $(grep -o 'music=[^ ]*' build/sound.txt)"
+            echo; cat build/probe.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film
+          path: out/
+          retention-days: 14
