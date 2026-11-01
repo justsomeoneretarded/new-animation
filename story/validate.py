@@ -262,6 +262,48 @@ def repair(film: dict) -> tuple[dict, list[str]]:
         for i, k in sorted(set(narr) - keep, reverse=True):
             shots[i]['lines'].pop(k)
         notes.append(f'narration trimmed from {len(narr)} to 5 lines')
+    # Big in-scene words mark a jump in time ("DAY 4.", "SATURDAY.", "3 YEARS LATER."), not scene titles; at most 3.
+    TIME_WORD = re.compile(r'(DAY|WEEK|MONTH|YEAR|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|LATER|AGO|TOMORROW|TONIGHT|MORNING|NIGHT|\d+:\d+|\bAM\b|\bPM\b)', re.I)
+    bigs = 0
+    for s in shots:
+        b = s.get('big')
+        if not b:
+            continue
+        if not TIME_WORD.search(b['text']) or bigs >= 3:
+            s.pop('big'); continue
+        bigs += 1
+    # The inner voice belongs to the hero: it only appears and speaks in shots where the hero is.
+    demons = {cid for cid, c in film['cast'].items() if c.get('kind') == 'demon'}
+    for s in shots:
+        ids = {a['id'] for a in s['actors']}
+        if 'hero' not in ids and not s.get('card'):
+            s['actors'] = [a for a in s['actors'] if a['id'] not in demons]
+            s['lines'] = [l for l in s['lines'] if l['who'] not in demons]
+    # no two narration lines that say nearly the same thing
+    said = []
+    for s in shots:
+        kept = []
+        for l in s['lines']:
+            if l['who'] == 'narrator':
+                words = set(re.findall(r'[a-z]+', (l['text'] + ' ' + l.get('twist', '')).lower())) - {'the', 'a', 'is', 'it', 'to', 'of', 'and', 'than', 'i', 'he', 'she'}
+                if any(len(words & w) >= .6 * max(1, min(len(words), len(w))) for w in said) and not l.get('hidden'):
+                    continue
+                said.append(words)
+            kept.append(l)
+        s['lines'] = kept
+    # vary poses: the same pose for the hero more than twice in a row reads as a loop
+    alt = {'headhands': ['slump', 'sit', 'stand', 'crossarms'], 'slump': ['sit', 'headhands', 'stand'], 'phone': ['phone', 'sit', 'stand']}
+    run = []
+    for s in shots:
+        h = next((a for a in s['actors'] if a['id'] == 'hero'), None)
+        if not h:
+            run = []; continue
+        run = run + [h['pose']] if run and run[-1] == h['pose'] else [h['pose']]
+        if len(run) > 2 and h['pose'] in alt:
+            h['pose'] = alt[h['pose']][len(run) % len(alt[h['pose']])]
+            if h['pose'] in ('sit',) and not h.get('seated'):
+                pass
+            run = [h['pose']]
     # demon lines should not repeat
     seen = set()
     for s in shots:

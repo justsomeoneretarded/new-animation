@@ -48,7 +48,7 @@ sunset as the ending; a calendar of ticked days; "just one more."; "nobody wants
 "Everyone falls. / Not everyone gets back up."; "LOCK IN."; a counter of words said, women seen or hours scrolled.
 """
 
-SHAPES = """STORY SHAPES — choose the one that fits the brief best, or invent another; do not default to the first:
+SHAPES = """STORY SHAPES — choose the one that fits the brief best, or invent another. "spiral" is the most overused: pick it only if nothing else fits.
 - spiral: the struggle repeats and gets worse, a low point, a choice, a different repeat at the end.
 - two_paths: two versions of the same life or day shown side by side or alternating (what he does vs what he could do).
 - countdown: something is coming (an exam, a flight, a goodbye, a deadline) and every scene is closer to it.
@@ -127,7 +127,8 @@ You are the writer and director. Read the brief closely and build an original fi
   sets), time (night/dawn/day/dusk), weather (none/rain/snow), grade (one of {list(v['grades'])}), emotion (the hero's mood:
   one of {v['moods']}), what_happens (concrete visible action and acting, specific to this story), and only when the beat
   needs it: demon_line, dialogue [{{"who": id, "text": ...}}], narration + narration_twist, phone (what is on the screen),
-  insert (note/calendar/photo/letter + exactly what it shows), big_text, counter_values, chapter, relapse (true/false);
+  insert (note/calendar/photo/letter + exactly what it shows), big_text (only for a jump in time, 0-2 in the film),
+  counter_values, chapter, relapse (true/false);
 - ending_cards: 0-2 closing cards that fit THIS film, each {{"style": "quote" | "logo" | "red" | "title", "lines": [...]}}
   (quote = two lines where the second turns the first; logo = the film's title with a short tagline; red = a short imperative).
 Vary the sets: use the places this story would really happen, not the same bedroom-cafe-desk every time.
@@ -165,12 +166,17 @@ RULES:
 - Narration lines use who "narrator" with a "twist" second line; leave the shot long enough to hear it. Only add narration if the beat has it.
 - The demon is in at most half the shots, its lines never repeat, and it never encourages the right choice.
 - An "insert" note must contain the exact words written. No stage directions like "[sigh]" in lines; show them with mood and pose.
-- A phone shot shows a message once: either as a sent bubble or as typing, not both."""
+- A phone shot shows a message once: either as a sent bubble or as typing, not both.
+- Put each character exactly where the beat puts them: if the beat says someone else is on stage or alone in a room, the hero
+  is not in that shot unless the beat says so. The inner voice only talks to the hero.
+- "big" text is only for a jump in time ("DAY 4.", "SATURDAY.", "THREE YEARS LATER."), at most once per beat and rarely —
+  never a scene title. Vary poses and framings from shot to shot."""
 
 
 def shots_for_beat(beat, i, n, sheet, example):
     # The system prompt is identical for every beat so Ollama can reuse its prompt cache.
-    ids = ', '.join(p.get('id') for p in sheet.get('cast', []) if p.get('id'))
+    ids = '; '.join(f"{p.get('id')} ({p.get('kind')}{', ' + p['hair'] + ' hair' if p.get('hair') else ''}{', ' + p['top'] + ' ' + p.get('top_style', 'top') if p.get('top') else ''})"
+                    for p in sheet.get('cast', []) if p.get('id'))
     dev = sheet.get('device') or {}
     system = FORMULA + '\n' + shot_schema() + f"""
 You are the storyboard artist. Turn ONE beat into 2-4 shots. Reply with JSON only: {{"shots": [ ...shot objects... ]}}.
