@@ -62,7 +62,7 @@ function windowFrame(ctx, x, y, w, h, env, t) {
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
   sky(ctx, env, x, y, w, h);
   skyline(ctx, x - 20, x + w + 20, y + h + 4, 11 + Math.round(x), env, t, h * .7);
-  weatherIn(ctx, env, t, x, y, w, h, .7);
+  weatherIn(ctx, env, t, x, y, w, h, .7, true);
   ctx.restore();
   rr(ctx, x - 8, y - 8, w + 16, h + 16, 4, null, '#4a4e57', 4);
   line(ctx, [x + w / 2, y, x + w / 2, y + h], '#4a4e57', 4);
@@ -71,19 +71,65 @@ function windowFrame(ctx, x, y, w, h, env, t) {
   pool(ctx, x + w / 2, y + h / 2, w * .9, env.time === 'night' ? COLD : WHITE, env.time === 'night' ? .07 : .12);
 }
 
-function weatherIn(ctx, env, t, x, y, w, h, a = 1) {
+function weatherIn(ctx, env, t, x, y, w, h, a = 1, glass = false) {
   if (env.weather === 'rain') {
-    ctx.strokeStyle = `rgba(170,190,220,${.35 * a})`; ctx.lineWidth = 1.6;
-    for (let i = 0; i < Math.floor(w * h / 5000); i++) {
-      const rx = x + ((hash(i) * w + t * 60) % w), ry = y + ((hash(i + 99) * h + t * (900 + hash(i + 7) * 300)) % h);
-      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 5, ry + 22); ctx.stroke();
+    const n = Math.floor(w * h / 4200);
+    for (let i = 0; i < n; i++) {
+      const sp = 1100 + hash(i + 7) * 500, len = 18 + hash(i + 3) * 26;
+      const rx = x + ((hash(i) * w + t * 140) % w), ry = y + ((hash(i + 99) * h + t * sp) % h);
+      ctx.strokeStyle = `rgba(185,205,235,${(.18 + hash(i + 11) * .3) * a})`; ctx.lineWidth = .8 + hash(i + 13) * 1.4;
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - len * .22, ry + len); ctx.stroke();
+    }
+    if (glass) {
+      // drops sliding down the window glass
+      for (let i = 0; i < Math.floor(w * h / 2600); i++) {
+        const dx = x + hash(i + 400) * w, dy = y + ((hash(i + 401) * h + t * (8 + hash(i + 402) * 30) * (hash(i + 403) > .8 ? 4 : .2)) % h), r = 1.5 + hash(i + 404) * 3;
+        ctx.fillStyle = `rgba(200,215,240,${.35 * a})`; ctx.beginPath(); ctx.ellipse(dx, dy, r, r * 1.3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${.4 * a})`; ctx.beginPath(); ctx.arc(dx - r * .3, dy - r * .4, r * .35, 0, Math.PI * 2); ctx.fill();
+      }
     }
   } else if (env.weather === 'snow') {
-    ctx.fillStyle = `rgba(235,240,250,${.75 * a})`;
     for (let i = 0; i < Math.floor(w * h / 3500); i++) {
       const rx = x + ((hash(i) * w + Math.sin(t * .8 + i) * 20 + t * 40) % w + w) % w, ry = y + ((hash(i + 5) * h + t * (60 + hash(i + 3) * 70)) % h);
+      ctx.fillStyle = `rgba(235,240,250,${(.45 + hash(i + 2) * .45) * a})`;
       ctx.beginPath(); ctx.arc(rx, ry, 1.5 + hash(i + 1) * 2.2, 0, Math.PI * 2); ctx.fill();
     }
+  }
+}
+
+// Foreground rain for outdoor sets: streaks in front of the characters and splashes on the ground.
+function rainFront(ctx, t) {
+  for (let i = 0; i < 70; i++) {
+    const sp = 1500 + hash(i + 70) * 600, len = 34 + hash(i + 71) * 30;
+    const rx = ((hash(i + 72) * 2100 + t * 180) % 2100) - 90, ry = ((hash(i + 73) * 1200 + t * sp) % 1200) - 60;
+    ctx.strokeStyle = `rgba(200,215,240,${.12 + hash(i + 74) * .18})`; ctx.lineWidth = 1.4 + hash(i + 75) * 1.6;
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - len * .22, ry + len); ctx.stroke();
+  }
+  for (let i = 0; i < 26; i++) {
+    const period = .5 + hash(i + 90) * .5, ph = ((t + hash(i + 91) * 3) % period) / period;
+    const sx = hash(i + 92 + Math.floor((t + hash(i + 91) * 3) / period) * 7) * 1920, sy = GROUND + 6 + hash(i + 93) * 120;
+    ctx.strokeStyle = `rgba(210,225,245,${.5 * (1 - ph)})`; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(sx, sy, 6 + ph * 22, 2 + ph * 5, 0, Math.PI, 0); ctx.stroke();
+  }
+}
+
+// Wet-ground reflection of a light: a soft vertical streak below it.
+function reflect(ctx, x, color = 'rgba(255,205,140,A)', a = .22, w = 70) {
+  // a soft, rippling streak on the wet ground below a light
+  for (let i = 0; i < 6; i++) {
+    const y = GROUND + 8 + i * 26, ww = w * (1 - i * .1), al = a * (1 - i / 6);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, ww / 2);
+    g.addColorStop(0, color.replace('A', al)); g.addColorStop(1, color.replace('A', 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, ww / 2, 9, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// Out-of-focus city lights; on close shots the depth blur turns them into bokeh.
+function bokeh(ctx, seed, t, y0 = 120, y1 = 620, n = 26, color = '255,196,120') {
+  const r = rng(seed);
+  for (let i = 0; i < n; i++) {
+    const x = r() * STAGE_W, y = y0 + r() * (y1 - y0), s = 8 + r() * 18, fl = .55 + .45 * noise1(t * .5 + i, seed);
+    ctx.fillStyle = `rgba(${color},${.35 * fl})`; ctx.fillRect(x - s / 2, y - s / 2, s, s);
   }
 }
 
@@ -235,6 +281,7 @@ const SETS = {
     }
   },
   street: {
+    outdoor: true,
     seat: () => 0,
     draw(ctx, env, t) {
       sky(ctx, env, -50, -50, STAGE_W + 100, GROUND + 50);
@@ -257,10 +304,13 @@ const SETS = {
       line(ctx, [-50, GROUND + 70, STAGE_W + 50, GROUND + 70], '#24262c', 2);
       for (let x = 40; x < STAGE_W; x += 220) line(ctx, [x, GROUND + 140, x + 110, GROUND + 140], '#2e3036', 4);
       streetLamp(ctx, pct(30), 300, t); streetLamp(ctx, pct(92), 300, t);
+      if (env.weather === 'rain') { reflect(ctx, pct(30)); reflect(ctx, pct(92)); reflect(ctx, pct(54) + 130, 'rgba(255,200,130,A)', .3, 220); }
+      if (env.time === 'night') bokeh(ctx, 5, t, 140, 460, 18);
       weatherIn(ctx, env, t, -50, -50, STAGE_W + 100, STAGE_H + 100);
     }
   },
   park: {
+    outdoor: true,
     seatFront: ['#2e2822', '#66563f'],
     seat: x => (x > pct(40) && x < pct(62)) ? 100 : 0,
     draw(ctx, env, t) {
@@ -278,6 +328,7 @@ const SETS = {
       line(ctx, [-50, GROUND - 100, STAGE_W + 50, GROUND - 100], '#22252b', 3);
       line(ctx, [-50, GROUND, STAGE_W + 50, GROUND], '#3c3f47', 3);
       streetLamp(ctx, pct(70), 260, t);
+      if (env.weather === 'rain') reflect(ctx, pct(70));
       bench(ctx, pct(40), pct(62));
       weatherIn(ctx, env, t, -50, -50, STAGE_W + 100, STAGE_H + 100);
     }
@@ -289,6 +340,7 @@ const SETS = {
     draw(ctx, env, t) {
       room(ctx, env, '#17130f', '#100d0b');
       windowFrame(ctx, pct(4), 200, 330, 300, env, t);
+      ctx.save(); ctx.beginPath(); ctx.rect(pct(4), 200, 330, 300); ctx.clip(); bokeh(ctx, 17, t, 220, 480, 12); ctx.restore();
       // menu board
       rr(ctx, pct(68), 170, 300, 190, 8, '#141412', '#5a4c3e', 3);
       ctx.font = `30px ${FONT_HAND}`; ctx.fillStyle = '#e9e1cf'; ctx.textAlign = 'center'; ctx.fillText('COFFEE', pct(68) + 150, 210);
@@ -333,6 +385,7 @@ const SETS = {
     }
   },
   hill: {
+    outdoor: true,
     seat: () => 0,
     ground: x => GROUND - 40 - 430 * smooth((x - pct(5)) / pct(90)),
     draw(ctx, env, t) {
@@ -348,6 +401,7 @@ const SETS = {
     }
   },
   rooftop: {
+    outdoor: true,
     seatFront: ['#1a1b20', '#4a4e57'],
     seat: x => (x > pct(28) && x < pct(72)) ? 104 : 0,
     draw(ctx, env, t) {
@@ -369,6 +423,53 @@ const SETS = {
       door(ctx, pct(70) - 75, env.door || 0, 160, 400);
       pool(ctx, pct(30), 120, 300, WARM, .12);
     }
+  },
+  bus_stop: {
+    outdoor: true,
+    seat: x => (x > pct(44) && x < pct(66)) ? 58 : 0,
+    seatFront: ['#2a2c32', '#5a5e68'],
+    draw(ctx, env, t) {
+      sky(ctx, env, -50, -50, STAGE_W + 100, GROUND + 50);
+      skyline(ctx, -60, STAGE_W + 60, 640, 63, env, t, 420, .2);
+      if (env.time === 'night') bokeh(ctx, 9, t, 200, 560, 22);
+      ctx.fillStyle = '#0b0b0e'; ctx.fillRect(-50, GROUND, STAGE_W + 100, 300);
+      line(ctx, [-50, GROUND, STAGE_W + 50, GROUND], '#3c3f47', 3);
+      line(ctx, [-50, GROUND + 90, STAGE_W + 50, GROUND + 90], '#2a2c32', 2);
+      // shelter: roof, glass back panel, posts
+      const x0 = pct(36), x1 = pct(74), top = GROUND - 470;
+      ctx.fillStyle = 'rgba(150,175,200,.08)'; ctx.fillRect(x0 + 10, top + 30, x1 - x0 - 20, GROUND - top - 30);
+      line(ctx, [x0 + 10, top + 30, x0 + 10, GROUND], '#4a4e57', 6); line(ctx, [x1 - 10, top + 30, x1 - 10, GROUND], '#4a4e57', 6);
+      rr(ctx, x0 - 30, top, x1 - x0 + 60, 34, 6, '#2a2c33', '#5a5e68');
+      fillRect(ctx, x0 + 60, top + 34, x1 - x0 - 120, 8, 'rgba(255,240,210,.85)');
+      pool(ctx, (x0 + x1) / 2, top + 60, 520, WARM, .26, .8);
+      // timetable + sign
+      rr(ctx, x1 + 40, GROUND - 420, 16, 420, 4, '#3d4048'); rr(ctx, x1 + 10, GROUND - 470, 76, 60, 8, '#2f6fd6', '#a9c4f2');
+      ctx.fillStyle = '#fff'; ctx.font = `bold 30px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillText('BUS', x1 + 48, GROUND - 430);
+      rr(ctx, x0 + 40, GROUND - 330, 120, 170, 6, '#1d2028', '#4a4e57');
+      for (let i = 0; i < 6; i++) fillRect(ctx, x0 + 56, GROUND - 310 + i * 24, 88, 6, '#4a5160');
+      bench(ctx, pct(44), pct(66));
+      if (env.weather === 'rain') { reflect(ctx, (x0 + x1) / 2, 'rgba(255,230,190,A)', .25, 300); }
+      weatherIn(ctx, env, t, -50, -50, STAGE_W + 100, STAGE_H + 100);
+    }
+  },
+  office: {
+    seat: x => Math.abs(x - pct(50)) < pct(9) ? 60 : 0,
+    desk: x => (x > pct(34) && x < pct(66)) ? 118 : 0,
+    draw(ctx, env, t) {
+      room(ctx, env, '#15171c', '#0f1014');
+      // fluorescent panels
+      for (const x of [pct(20), pct(50), pct(80)]) { fillRect(ctx, x - 120, 80, 240, 16, 'rgba(230,240,255,.7)'); pool(ctx, x, 120, 380, WHITE, .1, .6); }
+      windowFrame(ctx, pct(78), 200, 320, 260, env, t);
+      // background cubicles with monitors
+      for (const x of [pct(10), pct(24)]) {
+        fillRect(ctx, x - 110, GROUND - 230, 220, 230, '#1a1c22', '#3d4048'); rr(ctx, x - 50, GROUND - 330, 100, 70, 4, '#20242c', '#5a5e68');
+        rr(ctx, x - 44, GROUND - 324, 88, 58, 2, '#3e6aa8'); pool(ctx, x, GROUND - 300, 160, COLD, .12);
+      }
+      rr(ctx, pct(50) - 80, GROUND - 330, 160, 210, 18, '#1b1c22', '#3d4048');
+      pool(ctx, pct(61), GROUND - 230, 380, COLD, .16);
+      ITEMS.plant(ctx, pct(92), GROUND);
+    },
+    fg(ctx, env, t) { SETS.desk.fg(ctx, { ...env, lamp: 'off' }, t); }
   },
   void: {
     seat: () => 0,

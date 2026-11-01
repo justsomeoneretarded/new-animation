@@ -34,7 +34,8 @@ function actorState(shot, a, u) {
   if (a.depth === 'back') scale *= .7;
   st.scale = scale;
   const x0 = pct(a.x ?? 50), x1 = pct(a.to ?? a.x ?? 50);
-  const moving = (a.pose === 'walk' || a.pose === 'run') && Math.abs(x1 - x0) > 1;
+  const mover = a.pose === 'walk' || a.pose === 'run' || (a.pose === 'umbrella' && a.to !== undefined);
+  const moving = mover && Math.abs(x1 - x0) > 1;
   let x = x0, walked = u * (a.pose === 'run' ? 420 : 175), isMoving = a.pose === 'walk' || a.pose === 'run';
   if (moving) {
     const speed = (a.pose === 'run' ? 430 : 170) * scale * (a.speed || 1);
@@ -87,7 +88,9 @@ function drawActor(ctx, a, P, cam, u, t, heads) {
   const st = a.st, demon = st.kind === 'demon';
   const talking = (a.shot.lines || []).some(l => l.who === st.id && u >= (l.at ?? 0) && u <= (l.at ?? 0) + Math.min(l.text.length / 28 + .2, l.dur ?? 99));
   const blink = !demon && ((t + st.seed * .37) % 3.9) < .13;
-  const opts = { demon, skin: st.skin || (st.kind === 'extra' ? '#b9b4a6' : C.cream), zoom: cam.zoom, t, blink, talking };
+  const dcol = demonColor();
+  const opts = { demon, demonColor: dcol, skin: st.skin || (st.kind === 'extra' ? '#b9b4a6' : C.cream), zoom: cam.zoom, t, blink, talking,
+    detail: cam.zoom * (st.scale || 1) >= 1.9 ? 1 : 0, rain: a.shot.weather === 'rain', grin: demon && st.pose !== 'stand' };
   if (!demon) { const r = drawCharacter(ctx, st, P, opts); heads[st.id] = r.head; return; }
   // Demon: draw the black silhouette to an offscreen layer, then a blurred red copy behind it.
   const op = st.opacity ?? 1;
@@ -98,7 +101,7 @@ function drawActor(ctx, a, P, cam, u, t, heads) {
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   // red version of the silhouette
   BGX.save(); BGX.setTransform(1, 0, 0, 1, 0, 0); BGX.clearRect(0, 0, BG.width, BG.height);
-  BGX.drawImage(GLOW, 0, 0); BGX.globalCompositeOperation = 'source-in'; BGX.fillStyle = '#ff1e1e'; BGX.fillRect(0, 0, BG.width, BG.height); BGX.restore();
+  BGX.drawImage(GLOW, 0, 0); BGX.globalCompositeOperation = 'source-in'; BGX.fillStyle = dcol; BGX.fillRect(0, 0, BG.width, BG.height); BGX.restore();
   const pulse = .85 + .15 * Math.sin(t * 3.1);
   ctx.globalAlpha = op * pulse;
   ctx.filter = `blur(${Math.round(16 * K * Math.sqrt(cam.zoom))}px)`; ctx.drawImage(BG, 0, 0); ctx.drawImage(BG, 0, 0);
@@ -107,11 +110,36 @@ function drawActor(ctx, a, P, cam, u, t, heads) {
   ctx.drawImage(GLOW, 0, 0);
   ctx.restore();
   // glowing eyes on top
-  ctx.save(); ctx.globalAlpha = op; ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 18 * K;
-  const s = st.scale, [hx, hy] = r.head; const fdx = P.faceDx * 15 * s;
-  ctx.strokeStyle = '#ff4040'; ctx.lineWidth = 6 * s; ctx.lineCap = 'round';
+  ctx.save(); ctx.globalAlpha = op; ctx.shadowColor = dcol; ctx.shadowBlur = 18 * K;
+  const s = st.scale, [hx, hy] = r.head; const fdx = P.faceDx * 20 * s;
+  ctx.strokeStyle = shade(dcol, .25); ctx.lineWidth = 6 * s; ctx.lineCap = 'round';
   for (const side of [-1, 1]) { const ex = hx + (side * 21) * s + fdx; ctx.beginPath(); ctx.moveTo(ex - side * 13 * s, hy + 2 * s); ctx.lineTo(ex + side * 11 * s, hy + 9 * s); ctx.stroke(); }
+  if (opts.talking || opts.grin) { const open = opts.talking ? Math.abs(Math.sin(t * 10)) * 6 : 0; ctx.lineWidth = 5 * s; ctx.beginPath(); ctx.moveTo(hx - 24 * s + fdx, hy + 36 * s); ctx.quadraticCurveTo(hx + fdx, hy + (56 + open) * s, hx + 26 * s + fdx, hy + 33 * s); ctx.stroke(); }
   ctx.restore();
+}
+
+function demonColor() { return (FILM && FILM.demon_color) || '#ff2a2a'; }
+
+// Colour grade per shot: saturation/brightness plus a tint, like the references' scene-by-scene looks.
+const GRADES = {
+  neutral: null,
+  cold: { sat: .82, bri: .97, tint: '#4a6fa8', a: .14 },
+  grey: { sat: .32, bri: .96, tint: '#808890', a: .08 },
+  warm: { sat: 1.08, bri: 1.03, tint: '#ff9a40', a: .13 },
+  pink: { sat: 1.0, bri: 1.0, tint: '#ff3fa0', a: .15 },
+  sunset: { sat: 1.1, bri: 1.06, tint: '#ff9a40', a: .15 },
+  night: { sat: .8, bri: .92, tint: '#2a3a8a', a: .16 },
+  green: { sat: .95, bri: 1.0, tint: '#3fbf7a', a: .1 },
+  red: { sat: .9, bri: .95, tint: '#c41e1e', a: .16 }
+};
+function applyGrade(ctx, name) {
+  const g = GRADES[name]; if (!g) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  BGX.setTransform(1, 0, 0, 1, 0, 0); BGX.filter = 'none'; BGX.globalCompositeOperation = 'copy'; BGX.drawImage(CANVAS, 0, 0); BGX.globalCompositeOperation = 'source-over';
+  ctx.filter = `saturate(${g.sat}) brightness(${g.bri})`; ctx.globalCompositeOperation = 'copy'; ctx.drawImage(BG, 0, 0);
+  ctx.filter = 'none'; ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = Math.min(1, g.a * 3.2);
+  ctx.fillStyle = g.tint; ctx.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 }
 
 function drawWorld(shot, u, t) {
@@ -121,7 +149,11 @@ function drawWorld(shot, u, t) {
   for (const a of actors) {
     const tgt = actors.find(b => b.st.id === a.st.target) || actors.find(b => b !== a && b.st.kind === 'hero');
     if (tgt) { a.w.targetDx = tgt.st.wx - a.st.wx; a.w.targetShoulder = [(tgt.st.wx - a.st.wx) / a.st.scale + (tgt.st.wx > a.st.wx ? -40 : 40), (-210 * tgt.st.scale) / a.st.scale]; }
-    a.P = evalPose(a.st, u - (a.st.at && a.st.pose !== 'walk' && a.st.pose !== 'run' ? a.st.at : 0), shot.dur, a.w);
+    // look at the other main character in the shot (demons are ignored unless they speak)
+    const others = actors.filter(b => b !== a && b.st.kind !== 'extra' && b.st.depth !== 'back' && (b.st.kind !== 'demon' || (shot.lines || []).some(l => l.who === b.st.id)));
+    const lookT = actors.find(b => b.st.id === a.st.look_at) || others[0];
+    if (lookT && a.st.kind !== 'demon') a.w.lookDx = Math.sign(lookT.st.wx - a.st.wx) || 0;
+    a.P = evalPose(a.st, u - (a.st.at && !['walk', 'run', 'umbrella'].includes(a.st.pose) ? a.st.at : 0), shot.dur, a.w);
   }
   const cam = camera(shot, actors, u, t);
   const ctx = CTX; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = 'none'; ctx.globalAlpha = 1;
@@ -145,6 +177,8 @@ function drawWorld(shot, u, t) {
     rr(ctx, a.st.wx - 78 * s, a.st.wy - (a.w.seat + 6) * s, 156 * s, 20 * s, 7 * s, set.seatFront[0], set.seatFront[1], 2.4 / cam.zoom);
   }
   if (set.fg) { applyCam(ctx, cam); set.fg(ctx, env, t); }
+  if (shot.weather === 'rain' && SETS[shot.set] && SETS[shot.set].outdoor) { applyCam(ctx, cam); rainFront(ctx, t); }
+  applyGrade(ctx, shot.grade);
   // Lighting: vignette, plus a red pulse while the demon speaks
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const W = CANVAS.width, H = CANVAS.height;
@@ -152,7 +186,7 @@ function drawWorld(shot, u, t) {
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${shot.light === 'dark' ? .85 : .6})`);
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   const demonTalk = (shot.lines || []).some(l => (FILM.cast[l.who] || {}).kind === 'demon' && /[a-z]/i.test(l.text) && u >= (l.at ?? 0) && u <= (l.at ?? 0) + 1.2);
-  if (demonTalk) { const r = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); r.addColorStop(0, 'rgba(120,0,0,0)'); r.addColorStop(1, 'rgba(120,0,0,.32)'); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H); }
+  if (demonTalk) { const r = ctx.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); r.addColorStop(0, rgba(demonColor(), 0)); r.addColorStop(1, rgba(demonColor(), .2)); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H); }
   // heads to screen space for dialogue
   const z = cam.zoom; const sc = {};
   for (const [id, [hx, hy]] of Object.entries(heads)) sc[id] = [(hx - cam.cx) * z + 960, (hy - cam.cy) * z + 540 - 70 * z * ((actors.find(a => a.st.id === id) || {}).st?.scale || 1)];
@@ -163,10 +197,15 @@ function drawFrame(t) {
   const shot = TL.at(t); const u = t - shot.start;
   const ctx = CTX;
   let heads = {};
-  if (shot.camera && shot.camera.frame === 'phone') {
+  if (shot.camera && shot.camera.frame === 'insert') {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    drawInsert(ctx, shot, u, t, K);
+    applyGrade(ctx, shot.grade);
+  } else if (shot.camera && shot.camera.frame === 'phone') {
     const w = drawWorld({ ...shot, actors: [], camera: { frame: 'wide', dof: true, push: 0 } }, u, t);
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, CANVAS.width, CANVAS.height);
     drawPhonePOV(ctx, shot, u, t, K);
+    applyGrade(ctx, shot.grade);
   } else if (shot.card && !shot.card.over) {
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#070708'; ctx.fillRect(0, 0, CANVAS.width, CANVAS.height);
     if (shot.actors && shot.actors.length) { const w = drawWorld({ ...shot, set: 'void' }, u, t); heads = w.heads; }
@@ -178,6 +217,7 @@ function drawFrame(t) {
     if (shot.card && shot.card.over) { ctx.setTransform(1, 0, 0, 1, 0, 0); drawCard(ctx, shot, u, t, K); }
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawBig(ctx, shot, u, K);
   drawLines(ctx, shot, u, heads, K, FILM);
   drawHud(ctx, FILM, shot, u, K);
   // letterbox
@@ -204,21 +244,37 @@ function getCues() {
   for (const shot of TL.shots) {
     const s0 = shot.start;
     music.push({ start: s0, end: shot.end, level: shot.music || (shot.card ? 'high' : 'mid') });
-    const outdoor = ['street', 'park', 'hill', 'rooftop'].includes(shot.set);
-    const amb = shot.card ? 'none' : shot.weather === 'rain' ? 'rain' : shot.weather === 'snow' ? 'wind' : shot.set === 'cafe' ? 'cafe' : outdoor ? 'city' : 'room';
+    const outdoor = ['street', 'park', 'hill', 'rooftop', 'bus_stop'].includes(shot.set);
+    const amb = shot.card ? 'none' : (shot.camera && shot.camera.frame === 'insert') ? 'room' : shot.weather === 'rain' ? (outdoor ? 'rain' : 'rain_in') : shot.weather === 'snow' ? 'wind' : shot.set === 'cafe' ? 'cafe' : shot.set === 'office' ? 'office' : outdoor ? 'city' : 'room';
     ambience.push({ start: s0, end: shot.end, kind: amb });
     for (const c of shot.sfx || []) add(s0 + (c.at ?? 0), c.name, c.vol ?? 1);
     if (shot.transition === 'flash') add(s0, 'impact', .9);
     if (shot.card && (shot.card.style === 'red')) add(s0, 'impact', 1);
     if (shot.card && shot.card.style === 'cta') { add(s0 + 1.35, 'click', .8); add(s0 + 2.35, 'click', .8); }
     for (const l of shot.lines || []) {
+      const at = s0 + (l.at ?? 0);
       const demon = (FILM.cast[l.who] || {}).kind === 'demon';
-      if (demon && /[a-z]/i.test(l.text)) { add(s0 + (l.at ?? 0) - .15, 'whoosh', .5); add(s0 + (l.at ?? 0), 'drone', .7); }
+      if (demon && /[a-z]/i.test(l.text)) { add(at - .15, 'whoosh', .5); add(at, 'drone', .7); }
+      else if (l.who === 'narrator' && l.voice_file) cues.push({ t: +at.toFixed(3), name: 'voice', file: l.voice_file, vol: 1 });
+      else if (l.who !== 'narrator' && l.who !== 'caption' && (l.style || 'bubble') === 'bubble') {
+        add(at, 'pop', .35);
+        for (let i = 2; i < l.text.length; i += 3) add(at + i / (l.cps || 22), 'blip', .16);
+      }
     }
+    if (shot.big && shot.big.text) add(s0 + (shot.big.at ?? .2), 'impact', .55);
+    if (shot.card && shot.card.style === 'logo') add(s0 + .1, 'impact', .8);
+    if (shot.card && shot.card.style === 'quote') add(s0 + .1, 'riser', .25);
+    if (shot.insert) {
+      const ins = shot.insert;
+      if (ins.type === 'note' || ins.type === 'letter') for (let q = .4; q < .4 + (ins.text || '').length / 9; q += .32) add(s0 + q, 'scribble', .45);
+      if (ins.type === 'calendar') { const n = (ins.marked || 30) - (ins.from || 1) + 1, T = Math.max(1, shot.dur - .8); for (let i = 0; i < n; i++) add(s0 + T * (i + 1) / n, 'scribble', .3); }
+      if (ins.type === 'photo') add(s0 + .2, 'page', .6);
+    }
+    if (shot.phone && shot.phone.app === 'off' && shot.camera && shot.camera.frame === 'phone') add(s0 + (shot.phone.off_at ?? 1.4), 'click', .9);
     for (const a of shot.actors || []) {
       const kind = (FILM.cast[a.id] || {}).kind || a.kind;
       if (a.pose === 'fall') add(s0 + (a.at || 0) + .45, 'thud', 1);
-      if (a.pose === 'walk' || a.pose === 'run') {
+      if (a.pose === 'walk' || a.pose === 'run' || (a.pose === 'umbrella' && a.to !== undefined)) {
         const x0 = pct(a.x ?? 50), x1 = pct(a.to ?? a.x ?? 50); const run = a.pose === 'run';
         const speed = (run ? 430 : 170) * (a.scale || 1) * (a.speed || 1), dist = Math.abs(x1 - x0);
         const T = dist > 1 ? dist / speed : shot.dur, step = run ? .3 : .44;

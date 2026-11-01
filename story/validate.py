@@ -10,7 +10,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VOCAB = json.loads((ROOT / 'engine' / 'vocab.json').read_text())
-CARD_STYLES = {'title', 'quote', 'red', 'cta'}
+CARD_STYLES = set(VOCAB['cards'])
+INSERTS = set(VOCAB['inserts'])
+GRADES = set(VOCAB['grades'])
+LINE_STYLES = {'bubble', 'float', 'thought', 'whisper'}
+WARDROBE = VOCAB['wardrobe']
+HEX = lambda v: isinstance(v, str) and len(v) == 7 and v.startswith('#')
 
 
 def _num(v, lo, hi, default):
@@ -31,13 +36,30 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             c['kind'] = 'friend' if cid not in ('hero', 'demon') else cid
         if c.get('hat') and c['hat'] not in VOCAB['hats']:
             c['hat'] = 'beanie_orange'
+        if c.get('hair') not in WARDROBE['hair']:
+            c.pop('hair', None)
+        if c.get('top_style') not in WARDROBE['top_style']:
+            c.pop('top_style', None)
+        for key in ('top', 'pants', 'scarf', 'hair_color', 'skin', 'iris', 'umbrella_color'):
+            if key in c and not isinstance(c[key], str):
+                c.pop(key)
         cast[str(cid)] = c
     film['cast'] = cast
     hud = film.get('hud')
     if isinstance(hud, str):
-        film['hud'] = {'label': hud}
-    elif not (isinstance(hud, dict) and hud.get('label')):
+        hud = {'label': hud}
+    if isinstance(hud, dict) and hud.get('label') and not hud.get('items'):
+        hud = {'items': [{'label': hud['label'], 'color': hud.get('color', '#ffd34a')}]}
+    if isinstance(hud, dict) and isinstance(hud.get('items'), list):
+        items = [{'label': str(it.get('label', ''))[:22], 'color': it.get('color') if HEX(it.get('color')) else '#ffd34a'}
+                 for it in hud['items'][:2] if isinstance(it, dict) and it.get('label')]
+        film['hud'] = {'items': items} if items else None
+    else:
         film['hud'] = None
+    if not HEX(film.get('demon_color')):
+        film['demon_color'] = '#ff2a2a'
+    if film.get('narrator') not in ('male', 'female', 'british_male', 'british_female'):
+        film['narrator'] = 'male'
     shots = []
     for i, raw in enumerate(film.get('shots') or []):
         if not isinstance(raw, dict):
@@ -54,6 +76,13 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             s.pop('time', None)
         if s.get('weather') not in VOCAB['weather']:
             s.pop('weather', None)
+        if s.get('grade') not in GRADES:
+            s.pop('grade', None)
+        if isinstance(s.get('big'), dict) and str(s['big'].get('text', '')).strip():
+            s['big'] = {k: v for k, v in s['big'].items() if k in ('text', 'at', 'x', 'y', 'size', 'color')}
+            s['big']['text'] = str(s['big']['text'])[:16]
+        else:
+            s.pop('big', None)
         cam = dict(s.get('camera') or {})
         if cam.get('frame') not in VOCAB['frames']:
             cam['frame'] = 'wide'
@@ -61,6 +90,20 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             cam['frame'] = 'close'
         if isinstance(s.get('phone'), dict) and cam['frame'] != 'phone' and not s.get('actors'):
             cam['frame'] = 'phone'
+        if cam['frame'] == 'insert' or isinstance(s.get('insert'), dict) and not s.get('actors'):
+            ins = s.get('insert') if isinstance(s.get('insert'), dict) else None
+            if not ins or ins.get('type') not in INSERTS:
+                cam['frame'] = 'wide' if s.get('actors') else 'insert'
+                if not s.get('actors'):
+                    s['insert'] = {'type': 'note', 'text': str((ins or {}).get('text') or '...')[:40]}
+            else:
+                cam['frame'] = 'insert'
+                if ins['type'] in ('note', 'letter'):
+                    ins['text'] = str(ins.get('text') or '...')[:44]
+                    s['dur'] = round(max(s['dur'], .8 + len(ins['text']) / 9 + 1.2), 2)
+                if ins['type'] == 'calendar':
+                    ins['days'] = int(_num(ins.get('days'), 28, 31, 30)); ins['from'] = int(_num(ins.get('from'), 1, ins['days'], 1))
+                    ins['marked'] = int(_num(ins.get('marked'), ins['from'], ins['days'], ins['days']))
         s['camera'] = cam
         if cam['frame'] == 'phone':
             ph = s['phone']
@@ -134,8 +177,19 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             who = str(ln.get('who', 'caption'))
             if who not in ids and who not in ('caption', 'narrator'):
                 who = 'demon' if who == 'demon' else 'caption'
-            ln = {'who': who, 'text': str(ln['text']).strip()[:60], 'at': _num(ln.get('at'), 0, s['dur'] - .5, .4)}
-            lines.append(ln)
+            new = {'who': who, 'text': str(ln['text']).strip()[:70], 'at': _num(ln.get('at'), 0, max(0, s['dur'] - .5), .4)}
+            if ln.get('dur') is not None:
+                new['dur'] = _num(ln.get('dur'), .8, 9, None)
+            if who == 'narrator':
+                if str(ln.get('twist') or '').strip():
+                    new['twist'] = str(ln['twist']).strip()[:60]
+                if ln.get('hidden'):
+                    new['hidden'] = True
+                words = len((new['text'] + ' ' + new.get('twist', '')).split())
+                s['dur'] = round(max(s['dur'], new['at'] + words / 2.5 + 1.2), 2)
+            elif ln.get('style') in LINE_STYLES:
+                new['style'] = ln['style']
+            lines.append({k: v for k, v in new.items() if v is not None})
         s['lines'] = lines[:3]
         if s.get('music') not in VOCAB['music_levels']:
             s.pop('music', None)
@@ -144,15 +198,23 @@ def repair(film: dict) -> tuple[dict, list[str]]:
         s['sfx'] = [x for x in (s.get('sfx') or []) if isinstance(x, dict) and x.get('name') in VOCAB['sfx']]
         s['items'] = [x for x in (s.get('items') or []) if isinstance(x, dict) and x.get('type') in VOCAB['items']]
         h = s.get('hud')
-        if film['hud'] and isinstance(h, dict):
-            v = h.get('value')
-            if isinstance(v, list) and len(v) == 2 and all(isinstance(q, (int, float)) for q in v):
-                pass
-            elif not isinstance(v, (int, float)):
-                h.pop('value', None)
-        elif not isinstance(h, dict):
+        if isinstance(h, dict):
+            ok = lambda v: isinstance(v, (int, float)) or (isinstance(v, list) and len(v) == 2 and all(isinstance(q, (int, float)) for q in v))
+            vals = h.get('values') if isinstance(h.get('values'), list) else ([h['value']] if 'value' in h else [])
+            vals = [v if ok(v) else None for v in vals][:2]
+            h = {'values': vals} if film['hud'] and any(v is not None for v in vals) else {}
+            chap = (raw.get('hud') or {}).get('chapter')
+            if chap:
+                h['chapter'] = str(chap)[:18]
+            if (raw.get('hud') or {}).get('alert'):
+                h['alert'] = True
+            if h:
+                s['hud'] = h
+            else:
+                s.pop('hud', None)
+        else:
             s.pop('hud', None)
-        if not s['actors'] and not s.get('card') and cam['frame'] != 'phone':
+        if not s['actors'] and not s.get('card') and cam['frame'] not in ('phone', 'insert'):
             notes.append(f'shot {i}: nothing to show, dropped')
             continue
         shots.append(s)
@@ -161,8 +223,9 @@ def repair(film: dict) -> tuple[dict, list[str]]:
     # carry the HUD forward so the counter never blinks off between shots
     last = None
     for s in shots:
-        if film['hud'] and 'hud' not in s and last is not None and not s.get('card'):
-            v = last.get('value'); s['hud'] = {'value': v[-1] if isinstance(v, list) else v, 'chapter': last.get('chapter')}
+        if 'hud' not in s and last is not None and not s.get('card'):
+            vals = [v[-1] if isinstance(v, list) else v for v in last.get('values', [])]
+            s['hud'] = {k: v for k, v in (('values', vals), ('chapter', last.get('chapter'))) if v}
         if s.get('hud'):
             last = s['hud']
     if not any((s.get('card') or {}).get('style') == 'cta' for s in shots):

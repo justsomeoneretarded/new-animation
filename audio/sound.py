@@ -196,9 +196,34 @@ def sfx_crowd():
     return norm(x) * .4
 
 
+def sfx_blip():
+    s = t_(.05)
+    f = RNG.uniform(520, 760)
+    return norm(np.sin(2 * np.pi * f * s) * env(len(s), .002, curve=14)) * .35
+
+
+def sfx_scribble():
+    n = int(.28 * SR)
+    x = bp(noise(.28), 2500, 7000) * (0.5 + 0.5 * np.abs(np.sin(np.linspace(0, RNG.uniform(5, 9) * np.pi, n))))
+    return norm(x * np.sin(np.linspace(0, np.pi, n)) ** .5) * .35
+
+
+def sfx_page():
+    n = int(.45 * SR)
+    return norm(bp(noise(.45), 1200, 6000) * np.sin(np.linspace(0, np.pi, n)) ** 2) * .45
+
+
+def sfx_knock():
+    out = np.zeros(int(.7 * SR))
+    for i in range(3):
+        k = sfx_thud()[: int(.12 * SR)] * .8; st = int(i * .2 * SR); out[st:st + len(k)] += k
+    return norm(bp(out, 120, 2500)) * .8
+
+
 SFX = {name[4:]: fn for name, fn in globals().items() if name.startswith('sfx_')}
 SFX['rain'] = lambda: norm(hp(noise(1.5), 1500)) * .25
 SFX['wind'] = lambda: norm(lp(noise(2.0), 500)) * .3
+SFX['rain_heavy'] = lambda: norm(hp(noise(3.0), 900)) * .4
 
 
 # ---------------- ambience beds ----------------
@@ -214,6 +239,15 @@ def bed(kind, sec):
             d = hp(noise(.01), 3000) * env(int(.01 * SR), .0005, curve=25) * RNG.uniform(.2, 1)
             drops[i:i + len(d)] += d
         return norm(x + drops * .6) * .22
+    if kind == 'rain_in':
+        return lp(bed('rain', sec), 1400) * .8
+    if kind == 'office':
+        s = t_(sec)
+        hum = np.sin(2 * np.pi * 120 * s) * .3 + lp(noise(sec), 250) * .6
+        keys = np.zeros(n)
+        for i in RNG.integers(0, max(1, n - SR), max(1, int(sec * 3))):
+            k = sfx_typing() * .25; keys[i:i + len(k)] += k[: n - i]
+        return norm(hum) * .035 + keys * .5
     if kind == 'wind':
         s = t_(sec)
         return norm(bp(noise(sec), 150, 900) * (.5 + .5 * np.sin(2 * np.pi * .13 * s) ** 2)) * .16
@@ -293,11 +327,29 @@ def mix(cues_path, music_path, out_path, ffmpeg='ffmpeg'):
         mono = fallback_music(dur + .5); m = np.stack([mono, mono], 1)[:n]; source = 'synthesized fallback'
     m = m / (np.max(np.abs(m)) or 1) * .8
     g = automation(meta['music'], n)
-    # duck the music while the demon speaks
+    # voiceover clips
+    voice = np.zeros(n)
+    vdir = Path(meta.get('voice_dir') or Path(cues_path).parent / 'voice')
+    for c in meta['cues']:
+        if c['name'] != 'voice':
+            continue
+        f = vdir / c['file']
+        if not f.exists():
+            print(f'missing voice clip {f}'); continue
+        v = load_wav(f)[:, 0]
+        a = int(c['t'] * SR); L = min(len(v), n - a)
+        if L > 0:
+            voice[a:a + L] += v[:L]
+    has_voice = np.abs(voice) > 1e-4
+    # duck the music while the demon speaks or the narrator talks
     duck = np.ones(n)
     for c in meta['cues']:
         if c['name'] == 'drone':
             a = int(c['t'] * SR); duck[a:a + int(1.8 * SR)] = .55
+    if has_voice.any():
+        k = int(.25 * SR)
+        busy = np.convolve(has_voice.astype(float), np.ones(k), mode='same') > 0
+        duck[busy] = np.minimum(duck[busy], .38)
     duck = np.convolve(duck, np.ones(int(.3 * SR)) / int(.3 * SR), mode='same')
     fade = np.ones(n); fl = int(1.2 * SR); fade[-fl:] = np.linspace(1, 0, fl); fade[:int(.4 * SR)] = np.linspace(0, 1, int(.4 * SR))
     out += m * (g * duck * fade)[:, None]
@@ -318,11 +370,11 @@ def mix(cues_path, music_path, out_path, ffmpeg='ffmpeg'):
     cache = {}
     for c in meta['cues']:
         name = c['name']
-        if name not in SFX:
+        if name not in SFX or name == 'voice':
             continue
-        if name in ('typing', 'footsteps', 'pop', 'click') or name not in cache:
+        if name in ('typing', 'footsteps', 'pop', 'click', 'blip', 'scribble') or name not in cache:
             x = SFX[name]()
-            if name not in ('typing', 'footsteps', 'pop', 'click'):
+            if name not in ('typing', 'footsteps', 'pop', 'click', 'blip', 'scribble'):
                 cache[name] = x
         else:
             x = cache[name]
@@ -333,6 +385,9 @@ def mix(cues_path, music_path, out_path, ffmpeg='ffmpeg'):
         vol = c.get('vol', 1) * .8
         out[a:a + L, 0] += x[:L] * vol * (1 - pan)
         out[a:a + L, 1] += x[:L] * vol * (1 + pan)
+    if has_voice.any():
+        vpeak = np.max(np.abs(voice)) or 1
+        out[:, 0] += voice / vpeak * .62; out[:, 1] += voice / vpeak * .62
     out = np.tanh(out * 1.1) * .95
     pre = Path(out_path).with_suffix('.pre.wav')
     wavfile.write(pre, SR, (out * 32767).astype(np.int16))

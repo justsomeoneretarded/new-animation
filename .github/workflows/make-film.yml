@@ -5,30 +5,11 @@ on:
     inputs:
       title:
         description: Video title
-        default: The Sketchbook
+        required: true
+        default: Envy vs Enough
       brief:
-        description: 'Brief: the struggle, who the hero is, what the demon says, how it ends. Leave empty to render the example film.'
+        description: 'The story: who the hero is, what they struggle with, what the demon says, how it ends. Empty = render the example film.'
         default: ''
-      seconds:
-        description: Target length in seconds
-        type: choice
-        options: ['90', '120', '150', '180']
-        default: '120'
-      counter:
-        description: 'On-screen counter label, e.g. "Words said today" (optional; the writer picks one if empty)'
-        default: ''
-      film_file:
-        description: 'Or render a shot list already in the repo (e.g. examples/the-sketchbook.json). Overrides the brief.'
-        default: ''
-      script_model:
-        description: Local script model (Ollama)
-        type: choice
-        options: ['gemma4:12b', 'gemma4:e4b']
-        default: 'gemma4:12b'
-      score:
-        description: Compose an original score with ACE-Step (about 30-60 min extra)
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -47,7 +28,7 @@ jobs:
     outputs:
       mode: ${{ steps.mode.outputs.mode }}
     env:
-      SCRIPT_MODEL: ${{ inputs.script_model }}
+      SCRIPT_MODEL: gemma4:12b
       OLLAMA_HOST: 127.0.0.1:11435
       OLLAMA_URL: http://127.0.0.1:11435
       OLLAMA_MODELS: ${{ github.workspace }}/build/ollama-models
@@ -63,11 +44,12 @@ jobs:
         # Inputs are passed through the environment, never pasted into the script: a brief with
         # quotes or line breaks would otherwise break the shell.
         env:
-          FILM_FILE: ${{ inputs.film_file }}
           BRIEF: ${{ inputs.brief }}
+        # A brief that is the path of a shot list in the repo (e.g. examples/the-sketchbook.json) renders that file as is.
         run: |
-          if [ -n "$FILM_FILE" ]; then echo "mode=file" >> "$GITHUB_OUTPUT";
-          elif [ -z "$(echo "$BRIEF" | tr -d '[:space:]')" ]; then echo "mode=example" >> "$GITHUB_OUTPUT";
+          B="$(echo "$BRIEF" | tr -d '[:space:]')"
+          if [ -n "$B" ] && [ -f "$B" ] && [ "${B##*.}" = "json" ]; then echo "mode=file" >> "$GITHUB_OUTPUT";
+          elif [ -z "$B" ]; then echo "mode=example" >> "$GITHUB_OUTPUT";
           else echo "mode=write" >> "$GITHUB_OUTPUT"; fi
       - name: Prepare the local script model
         if: steps.mode.outputs.mode == 'write'
@@ -77,8 +59,7 @@ jobs:
         env:
           TITLE: ${{ inputs.title }}
           BRIEF: ${{ inputs.brief }}
-          COUNTER: ${{ inputs.counter }}
-        run: python story/write.py --stage beats --title "$TITLE" --brief "$BRIEF" --seconds "${{ inputs.seconds }}" --counter "$COUNTER" --dir build/writing
+        run: python story/write.py --stage beats --title "$TITLE" --brief "$BRIEF" --dir build/writing
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -98,7 +79,7 @@ jobs:
       matrix:
         part: [0, 1, 2, 3]
     env:
-      SCRIPT_MODEL: ${{ inputs.script_model }}
+      SCRIPT_MODEL: gemma4:12b
       OLLAMA_HOST: 127.0.0.1:11435
       OLLAMA_URL: http://127.0.0.1:11435
       OLLAMA_MODELS: ${{ github.workspace }}/build/ollama-models
@@ -144,8 +125,10 @@ jobs:
       - name: Use an existing shot list
         if: needs.beats.outputs.mode != 'write'
         env:
-          FILM_FILE: ${{ inputs.film_file || 'examples/the-sketchbook.json' }}
+          BRIEF: ${{ inputs.brief }}
         run: |
+          B="$(echo "$BRIEF" | tr -d '[:space:]')"
+          FILM_FILE="${B:-examples/envy-vs-enough.json}"
           mkdir -p build && cp "$FILM_FILE" build/film.json
           python -c "import sys,json; sys.path.insert(0,'story'); from write import script_md; from pathlib import Path; script_md(json.load(open('build/film.json')), Path('build/story.md'))"
       - name: Check and repair the shot list
@@ -164,10 +147,45 @@ jobs:
             build/validation.txt
           retention-days: 3
 
+  voice:
+    name: Record the narration
+    needs: write
+    if: ${{ always() && needs.write.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      duration: ${{ steps.done.outputs.duration }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/download-artifact@v4
+        with: { name: film-plan, path: build }
+      - name: Install Kokoro text-to-speech (CPU)
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends espeak-ng >/dev/null 2>&1 || true
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -q "kokoro>=0.9.4" soundfile
+      - name: Speak the narrator lines and fit the shots to them
+        run: python audio/voice.py build/film.json build/voice
+      - name: Final shot list
+        id: done
+        run: |
+          mkdir -p build/voice
+          echo "duration=$(python -c "import json;print(json.load(open('build/film.json'))['duration'])")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film-final
+          path: |
+            build/film.json
+            build/voice/
+          retention-days: 3
+
   music:
     name: Compose the score
-    needs: write
-    if: ${{ always() && needs.write.result == 'success' && inputs.score }}
+    needs: voice
+    if: ${{ always() && needs.voice.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     continue-on-error: true
@@ -176,7 +194,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: film-plan, path: build }
+        with: { name: film-final, path: build }
       - name: Free runner disk for the music model
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
       - uses: actions/setup-python@v5
@@ -217,8 +235,8 @@ jobs:
 
   picture:
     name: Picture part ${{ matrix.part }}
-    needs: write
-    if: ${{ always() && needs.write.result == 'success' }}
+    needs: voice
+    if: ${{ always() && needs.voice.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -228,7 +246,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: film-plan, path: build }
+        with: { name: film-final, path: build }
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - name: Install the renderer
@@ -239,7 +257,7 @@ jobs:
           bash scripts/fetch_fonts.sh
       - name: Render frames
         run: |
-          D=${{ needs.write.outputs.duration }}
+          D=${{ needs.voice.outputs.duration }}
           START=$(python3 -c "print($D*${{ matrix.part }}/4)"); END=$(python3 -c "print($D*(${{ matrix.part }}+1)/4)")
           node render/render.mjs --film build/film.json --out build/part-${{ matrix.part }}.mp4 --start $START --end $END --width 1920 --fps 30
       - name: Sound cue sheet and review stills
@@ -261,7 +279,7 @@ jobs:
 
   finish:
     name: Sound, edit and package
-    needs: [write, picture, music]
+    needs: [voice, picture, music]
     if: ${{ always() && needs.picture.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -270,7 +288,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - uses: actions/download-artifact@v4
-        with: { pattern: 'film-*', path: build, merge-multiple: true }
+        with: { name: film-final, path: build }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'film-part-*', path: build, merge-multiple: true }
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { name: film-music, path: build }
       - name: Install tools
         run: |
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg >/dev/null
@@ -284,7 +307,8 @@ jobs:
           SLUG=$(python3 -c "import json,re;print(re.sub(r'[^a-z0-9]+','-',json.load(open('build/film.json'))['title'].lower()).strip('-') or 'film')")
           mkdir -p out
           ffmpeg -y -v error -i build/picture.mp4 -i build/soundtrack.wav -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 256k -shortest -movflags +faststart "out/$SLUG.mp4"
-          cp build/film.json build/story.md build/contact-sheet.jpg build/soundtrack.wav out/
+          python -c "import sys,json; sys.path.insert(0,'story'); from write import script_md; from pathlib import Path; script_md(json.load(open('build/film.json')), Path('out/story.md'))"
+          cp build/film.json build/contact-sheet.jpg build/soundtrack.wav out/
           cp build/poster/*.jpg out/thumbnail-frame.jpg
           ffprobe -v error -show_entries format=duration:stream=codec_type,width,height -of compact "out/$SLUG.mp4" | tee build/probe.txt
           ffmpeg -v error -i "out/$SLUG.mp4" -f null - && echo "full decode: ok"
