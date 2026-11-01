@@ -113,17 +113,18 @@ def concept(title, brief):
     system = FORMULA + f"""
 You are the writer and director. From the title and brief, write the concept and the beat sheet as JSON:
 - title; logline; demon_color (hex, fits the theme); narrator: male or female;
-- device: {{"type": "counter" | "days" | "none", "items": [{{"label": "Seen", "color": "#ff4fa0"}}, ...]}} (items only for counter, 1-2 short labels);
+- device: {{"type": "counter" | "days" | "none", "items": [{{"label": "Seen", "color": "#ff4fa0"}}, ...]}} (items only for counter, 1-2 short labels of 1-3 plain words, e.g. "Words said today");
 - cast: the hero (id "hero", kind "hero"), the demon (id "demon", kind "demon") and 1-3 other people with short lowercase ids
   (kind friend or extra) and distinct looks. Wardrobe options: hair {v['wardrobe']['hair']}; hair_color {v['wardrobe']['hair_color']};
   top/pants/scarf: colour names ({v['wardrobe']['top']}); top_style {v['wardrobe']['top_style']}; hat {v['hats']}; hood true/false; glasses true/false.
   The hero usually stays cream with a hood (hood true, no top).
 - music_prompt: instrumental style for an AI composer (instruments, mood arc, bpm);
 - opening_line: the cold-open line shown on black ("He had seen a thousand women.");
-- beats: 12-16 beats, 4-14 seconds each, about 100-160 seconds in total. Each beat: where (one of the sets), time (night/dawn/day/dusk),
+- beats: 12-15 beats, 4-12 seconds each, about 100-150 seconds in total. Each beat: where (one of the sets), time (night/dawn/day/dusk),
   weather (none/rain/snow), grade (one of {list(v['grades'])}), emotion (the hero's mood: one of {v['moods']}),
   what_happens (concrete visible action and acting), and when useful: demon_line, dialogue [{{"who": id, "text": ...}}],
-  narration + narration_twist (only 3-5 beats in the whole film), phone (what is on screen), insert (note/calendar/photo + what it shows),
+  narration + narration_twist (ONLY 3-4 beats in the whole film have narration; plain, honest words, not poetic metaphors —
+  "The phone gave him a new face every second." / "She only had one." — never "The screen is a window."), phone (what is on screen), insert (note/calendar/photo + what it shows),
   big_text ("DAY 1."), counter_values (numbers for the device items), chapter ("DAY 4"), relapse (true/false);
 - quote: two lines, the second twists the first; logo: ["X vs Y.", "short tagline", "second tagline"]; red_card: optional ["LOOK UP.", "Right now."].
 SETS: """ + '; '.join(f'{k} ({s["about"]})' for k, s in v['sets'].items())
@@ -157,7 +158,10 @@ RULES:
 - The demon stands right next to the hero (x within 10-14) when it speaks, pose lean or grab with target "hero".
 - Two people at a table or bench sit facing each other: facing 1 for the one on the left, -1 for the one on the right.
 - Put each person's mood on every actor. Use the beat's grade on every shot of the beat.
-- Narration lines use who "narrator" with a "twist" second line; leave the shot long enough to hear it."""
+- Narration lines use who "narrator" with a "twist" second line; leave the shot long enough to hear it. Only add narration if the beat has it.
+- The demon is in at most half the shots, its lines never repeat, and it never encourages the right choice.
+- An "insert" note must contain the exact words written. No stage directions like "[sigh]" in lines; show them with mood and pose.
+- A phone shot shows a message once: either as a sent bubble or as typing, not both."""
 
 
 def shots_for_beat(beat, i, n, sheet, example):

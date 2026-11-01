@@ -5,6 +5,7 @@ python story/validate.py film.json            -> prints problems, writes the rep
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -99,7 +100,10 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             else:
                 cam['frame'] = 'insert'
                 if ins['type'] in ('note', 'letter'):
-                    ins['text'] = str(ins.get('text') or '...')[:44]
+                    ins['text'] = str(ins.get('text') or '').strip()[:44]
+                    if len(re.sub(r'[^a-z0-9]', '', ins['text'].lower())) < 3:
+                        notes.append(f'shot {i}: note close-up with nothing written on it, dropped')
+                        continue
                     s['dur'] = round(max(s['dur'], .8 + len(ins['text']) / 9 + 1.2), 2)
                 if ins['type'] == 'calendar':
                     ins['days'] = int(_num(ins.get('days'), 28, 31, 30)); ins['from'] = int(_num(ins.get('from'), 1, ins['days'], 1))
@@ -114,8 +118,12 @@ def repair(film: dict) -> tuple[dict, list[str]]:
                 m['text'] = str(m.get('text', ''))[:60]
                 m['at'] = _num(m.get('at'), 0, s['dur'], 0)
             ty = ph.get('typing')
+            if isinstance(ty, dict) and not str(ty.get('text', '')).strip():
+                ph.pop('typing'); ty = None
             if isinstance(ty, dict):
                 ty['text'] = str(ty.get('text', ''))[:48]
+                # a typed message shouldn't already be on screen as a sent bubble
+                ph['messages'] = [m for m in ph.get('messages') or [] if not (m.get('from') == 'me' and str(m.get('text', '')).strip().lower() == ty['text'].strip().lower())]
                 if ty.get('action') not in ('delete', 'send', 'hold'):
                     ty['action'] = 'hold'
                 need = _num(ty.get('at'), 0, 9, .4) + len(ty['text']) / 11 + (1.6 if ty['action'] == 'delete' else .9)
@@ -174,6 +182,9 @@ def repair(film: dict) -> tuple[dict, list[str]]:
         for ln in s.get('lines') or []:
             if not isinstance(ln, dict) or not str(ln.get('text', '')).strip():
                 continue
+            text = str(ln['text']).strip()
+            if re.fullmatch(r'[\[\(*].*[\]\)*]', text) and ln.get('style') != 'thought':
+                continue  # stage directions like "[sigh]" are not dialogue
             who = str(ln.get('who', 'caption'))
             if who not in ids and who not in ('caption', 'narrator'):
                 who = 'demon' if who == 'demon' else 'caption'
@@ -232,6 +243,32 @@ def repair(film: dict) -> tuple[dict, list[str]]:
         shots.append({'dur': 4.2, 'set': 'void', 'music': 'mid', 'card': {'style': 'cta', 'lines': ['If this hit, like and subscribe.']},
                       'actors': [{'id': 'hero', 'x': 50, 'pose': 'wave', 'mood': 'happy', 'scale': .7}], 'lines': []})
         notes.append('added the closing like/subscribe card')
+    # The format uses narration sparingly: keep at most 5 spoken lines (twist lines first, spread out).
+    narr = [(i, k) for i, s in enumerate(shots) for k, l in enumerate(s['lines']) if l['who'] == 'narrator' and not l.get('hidden')]
+    if len(narr) > 5:
+        ranked = sorted(narr, key=lambda ik: (0 if shots[ik[0]]['lines'][ik[1]].get('twist') else 1, ik[0]))
+        keep = set()
+        for ik in ranked:
+            if len(keep) < 5 and all(abs(ik[0] - j[0]) > 2 for j in keep):
+                keep.add(ik)
+        for ik in ranked:
+            if len(keep) < 5:
+                keep.add(ik)
+        for i, k in sorted(set(narr) - keep, reverse=True):
+            shots[i]['lines'].pop(k)
+        notes.append(f'narration trimmed from {len(narr)} to 5 lines')
+    # demon lines should not repeat
+    seen = set()
+    for s in shots:
+        kept = []
+        for l in s['lines']:
+            key = l['text'].lower().strip(' .!')
+            if (film['cast'].get(l['who']) or {}).get('kind') == 'demon':
+                if key in seen:
+                    continue
+                seen.add(key)
+            kept.append(l)
+        s['lines'] = kept
     shots[0].setdefault('transition', 'fade')
     film['shots'] = shots
     if not any(l['who'] == 'demon' for s in shots for l in s['lines']):
