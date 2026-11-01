@@ -109,6 +109,68 @@
     "chair": 50
    },
    "seat": "chair at 50 (sit / type)"
+  },
+  "classroom": {
+   "about": "classroom: chalkboard, rows of desks in the foreground, window",
+   "spots": {
+    "desks": [
+     30,
+     50,
+     70
+    ]
+   },
+   "seat": "desks at 30, 50, 70 (sit / type)"
+  },
+  "living_room": {
+   "about": "living room: sofa, floor lamp, TV glow, family photos on the wall",
+   "spots": {
+    "sofa": [
+     36,
+     64
+    ],
+    "tv": 82,
+    "window": 12
+   },
+   "seat": "sofa 36-64"
+  },
+  "train": {
+   "about": "inside a train or subway car at night, the city streaming past the windows",
+   "spots": {
+    "seats": [
+     10,
+     90
+    ]
+   },
+   "seat": "bench seats along the whole car"
+  },
+  "beach": {
+   "about": "beach and sea; sun on the horizon at dusk or dawn",
+   "spots": {
+    "shore": [
+     10,
+     90
+    ]
+   }
+  },
+  "stage": {
+   "about": "theatre stage: red curtains, a spotlight, audience silhouettes in front",
+   "spots": {
+    "center": 50
+   }
+  },
+  "hospital": {
+   "about": "hospital room: bed with rails, heart monitor, a visitor chair, window",
+   "spots": {
+    "bed": [
+     18,
+     48
+    ],
+    "chair": [
+     56,
+     76
+    ]
+   },
+   "seat": "chair 56-76"
   }
  },
  "times": [

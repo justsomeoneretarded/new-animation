@@ -94,9 +94,14 @@ def repair(film: dict) -> tuple[dict, list[str]]:
         if cam['frame'] == 'insert' or isinstance(s.get('insert'), dict) and not s.get('actors'):
             ins = s.get('insert') if isinstance(s.get('insert'), dict) else None
             if not ins or ins.get('type') not in INSERTS:
-                cam['frame'] = 'wide' if s.get('actors') else 'insert'
-                if not s.get('actors'):
-                    s['insert'] = {'type': 'note', 'text': str((ins or {}).get('text') or '...')[:40]}
+                text = str((ins or {}).get('text') or '').strip()
+                if s.get('actors'):
+                    cam['frame'] = 'wide'
+                elif len(re.sub(r'[^a-z0-9]', '', text.lower())) >= 3:
+                    cam['frame'] = 'insert'; s['insert'] = {'type': 'note', 'text': text[:44]}
+                else:
+                    notes.append(f'shot {i}: close-up of an object with nothing to show, dropped')
+                    continue
             else:
                 cam['frame'] = 'insert'
                 if ins['type'] in ('note', 'letter'):
@@ -183,7 +188,7 @@ def repair(film: dict) -> tuple[dict, list[str]]:
             if not isinstance(ln, dict) or not str(ln.get('text', '')).strip():
                 continue
             text = str(ln['text']).strip()
-            if re.fullmatch(r'[\[\(*].*[\]\)*]', text) and ln.get('style') != 'thought':
+            if not re.search(r'[A-Za-z0-9]', text) or re.fullmatch(r'[\[\(*].*[\]\)*]', text) and ln.get('style') != 'thought':
                 continue  # stage directions like "[sigh]" are not dialogue
             who = str(ln.get('who', 'caption'))
             if who not in ids and who not in ('caption', 'narrator'):

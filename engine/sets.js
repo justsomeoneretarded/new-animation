@@ -471,6 +471,111 @@ const SETS = {
     },
     fg(ctx, env, t) { SETS.desk.fg(ctx, { ...env, lamp: 'off' }, t); }
   },
+  classroom: {
+    seat: x => [pct(30), pct(50), pct(70)].some(c => Math.abs(x - c) < pct(5)) ? 60 : 0,
+    desk: x => [pct(30), pct(50), pct(70)].some(c => Math.abs(x - c) < pct(6)) ? 112 : 0,
+    draw(ctx, env, t) {
+      room(ctx, env, '#14171a', '#0e1012');
+      // chalkboard
+      rr(ctx, pct(18), 170, pct(64), 280, 8, '#1d2b24', '#5a4c3e', 6);
+      ctx.strokeStyle = 'rgba(230,230,220,.35)'; ctx.lineWidth = 3;
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(pct(24), 230 + i * 50); ctx.lineTo(pct(24) + 200 + (i * 97) % 300, 232 + i * 50); ctx.stroke(); }
+      fillRect(ctx, pct(18), 452, pct(64), 10, '#3a2f25');
+      windowFrame(ctx, pct(86), 190, 200, 260, env, t);
+      for (const x of [pct(12), pct(88)]) pool(ctx, x, 200, 300, WHITE, .06);
+      fillRect(ctx, -50, 60, STAGE_W + 100, 14, 'rgba(230,240,255,.5)');
+    },
+    fg(ctx, env, t) {
+      for (const c of [pct(30), pct(50), pct(70)]) { rr(ctx, c - 120, GROUND - 112, 240, 16, 4, '#5a4632', '#8a6a48'); fillRect(ctx, c - 104, GROUND - 96, 208, 96, '#2e261d', '#4a3e32'); }
+    }
+  },
+  living_room: {
+    seat: x => (x > pct(36) && x < pct(64)) ? 64 : 0,
+    seatFront: ['#4a3a4e', '#6e5a72'],
+    draw(ctx, env, t) {
+      room(ctx, env, '#16141a', '#100e12');
+      windowFrame(ctx, pct(8), 200, 260, 280, env, t);
+      // tv glow on the right
+      rr(ctx, pct(80), GROUND - 330, 250, 150, 6, '#0d0f14', '#3d4048'); rr(ctx, pct(80) + 10, GROUND - 320, 230, 130, 3, env.screen === 'off' ? '#0b0c10' : '#2f4f7a');
+      if (env.screen !== 'off') pool(ctx, pct(80) + 125, GROUND - 250, 420, COLD, .2);
+      fillRect(ctx, pct(78), GROUND - 180, 300, 180, '#1b1a1f', '#3d4048');
+      // sofa
+      rr(ctx, pct(34), GROUND - 200, pct(32), 90, 26, '#3e3142', '#5a4a5e');
+      rr(ctx, pct(32), GROUND - 130, 60, 130, 18, '#3e3142', '#5a4a5e'); rr(ctx, pct(68) - 60, GROUND - 130, 60, 130, 18, '#3e3142', '#5a4a5e');
+      rr(ctx, pct(34), GROUND - 70, pct(32), 70, 10, '#33283a', '#5a4a5e');
+      // lamp and frames
+      line(ctx, [pct(28), GROUND, pct(28), GROUND - 300], '#54575f', 5); rr(ctx, pct(28) - 40, GROUND - 350, 80, 60, 10, '#c9a46a'); pool(ctx, pct(28), GROUND - 320, 320, WARM, env.lamp === 'off' ? 0 : .3);
+      for (const [x, y] of [[pct(44), 250], [pct(54), 230], [pct(62), 270]]) rr(ctx, x, y, 90, 110, 3, '#1c1b20', '#5a4c3e', 4);
+    }
+  },
+  train: {
+    seat: x => (x > pct(10) && x < pct(90)) ? 62 : 0,
+    seatFront: ['#2b3a4a', '#4e6274'],
+    draw(ctx, env, t) {
+      room(ctx, env, '#1a1d22', '#121418');
+      // windows with the city streaming past
+      for (let i = 0; i < 4; i++) {
+        const x = 90 + i * 460, y = 200, w = 380, h = 240;
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+        sky(ctx, env, x, y, w, h);
+        ctx.translate(-((t * 420) % 1400), 0); skyline(ctx, x - 40, x + w + 1500, y + h + 10, 31 + i, env, t, h * .8, .3); ctx.restore();
+        rr(ctx, x - 10, y - 10, w + 20, h + 20, 22, null, '#5a5e68', 6);
+      }
+      for (let x = 60; x < STAGE_W; x += 230) line(ctx, [x, 80, x, 180], '#4a4e57', 4);
+      line(ctx, [0, 90, STAGE_W, 90], '#6a6e78', 5);
+      fillRect(ctx, -50, 60, STAGE_W + 100, 12, 'rgba(230,240,255,.55)');
+      rr(ctx, -20, GROUND - 200, STAGE_W + 40, 120, 14, '#2b3a4a', '#4e6274');
+    }
+  },
+  beach: {
+    outdoor: true,
+    seat: () => 0,
+    draw(ctx, env, t) {
+      sky(ctx, env, -50, -50, STAGE_W + 100, 640);
+      if (env.time === 'dusk' || env.time === 'dawn') { pool(ctx, pct(60), 600, 700, 'rgba(255,150,80,A)', .5, .5); ctx.fillStyle = '#ffcf8a'; ctx.beginPath(); ctx.arc(pct(60), 600, 60, Math.PI, 0); ctx.fill(); }
+      const seaTop = 600;
+      const g = ctx.createLinearGradient(0, seaTop, 0, GROUND); g.addColorStop(0, env.time === 'night' ? '#0f1a2c' : '#2a4a6a'); g.addColorStop(1, '#0d1420');
+      ctx.fillStyle = g; ctx.fillRect(-50, seaTop, STAGE_W + 100, GROUND - seaTop);
+      for (let i = 0; i < 6; i++) { const y = seaTop + 30 + i * 40, off = Math.sin(t * .8 + i) * 30; ctx.strokeStyle = `rgba(200,220,240,${.12 + i * .03})`; ctx.lineWidth = 2; ctx.beginPath(); for (let x = -50; x < STAGE_W + 60; x += 40) ctx[x === -50 ? 'moveTo' : 'lineTo'](x + off, y + Math.sin(x * .02 + t + i) * 4); ctx.stroke(); }
+      ctx.fillStyle = '#2b2620'; ctx.fillRect(-50, GROUND - 10, STAGE_W + 100, 400);
+      line(ctx, [-50, GROUND - 10, STAGE_W + 50, GROUND - 10], '#5a4c3e', 3);
+      weatherIn(ctx, env, t, -50, -50, STAGE_W + 100, STAGE_H + 100);
+    }
+  },
+  stage: {
+    seat: () => 0,
+    draw(ctx, env, t) {
+      ctx.fillStyle = '#070708'; ctx.fillRect(-50, -50, STAGE_W + 100, STAGE_H + 100);
+      // curtains
+      ctx.fillStyle = '#5a1620'; for (const [x0, dir] of [[-50, 1], [STAGE_W + 50, -1]]) { ctx.beginPath(); ctx.moveTo(x0, -50); ctx.lineTo(x0 + dir * 380, -50); ctx.quadraticCurveTo(x0 + dir * 260, 500, x0 + dir * 160, GROUND); ctx.lineTo(x0, GROUND); ctx.fill(); }
+      fillRect(ctx, -50, -50, STAGE_W + 100, 90, '#4a121a');
+      // stage floor + spotlight
+      ctx.fillStyle = '#2a2018'; ctx.fillRect(-50, GROUND, STAGE_W + 100, 300); line(ctx, [-50, GROUND, STAGE_W + 50, GROUND], '#7a5a3a', 3);
+      ctx.fillStyle = 'rgba(255,240,210,.08)'; ctx.beginPath(); ctx.moveTo(pct(50) - 30, -50); ctx.lineTo(pct(50) + 30, -50); ctx.lineTo(pct(50) + 300, GROUND); ctx.lineTo(pct(50) - 300, GROUND); ctx.fill();
+      pool(ctx, pct(50), GROUND, 420, WHITE, .3, .2);
+      // audience silhouettes
+      for (let i = 0; i < 22; i++) { const x = i * 92 - 20, y = STAGE_H - 30 + (i % 2) * 14; ctx.fillStyle = '#050506'; ctx.beginPath(); ctx.arc(x, y - 60, 34, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(x - 46, y - 40, 92, 100); }
+    }
+  },
+  hospital: {
+    seat: x => (x > pct(56) && x < pct(76)) ? 58 : 0,
+    seatFront: ['#2a3a3a', '#4e6a6a'],
+    draw(ctx, env, t) {
+      room(ctx, env, '#171c1e', '#101415');
+      fillRect(ctx, -50, 60, STAGE_W + 100, 12, 'rgba(225,245,240,.55)');
+      windowFrame(ctx, pct(78), 200, 240, 250, env, t);
+      // bed with rails, monitor, chair
+      rr(ctx, pct(18), GROUND - 140, pct(30), 60, 10, '#d9dfe0', '#7a8a8a');
+      rr(ctx, pct(18) - 10, GROUND - 230, 24, 230, 6, '#5a6a6a'); rr(ctx, pct(48) - 10, GROUND - 200, 24, 200, 6, '#5a6a6a');
+      line(ctx, [pct(20), GROUND - 160, pct(46), GROUND - 160], '#8a9a9a', 4);
+      rr(ctx, pct(8), GROUND - 420, 120, 90, 8, '#101416', '#5a6a6a');
+      ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 3; ctx.beginPath();
+      for (let i = 0; i <= 100; i++) { const x = pct(8) + 10 + i, ph = ((i / 100) + t * .6) % 1; const y = GROUND - 375 - (ph > .45 && ph < .5 ? 30 : ph > .5 && ph < .53 ? -16 : 0); ctx[i ? 'lineTo' : 'moveTo'](x, y); }
+      ctx.stroke();
+      line(ctx, [pct(14), GROUND - 330, pct(14), GROUND], '#5a6a6a', 4);
+      rr(ctx, pct(56), GROUND - 230, pct(20), 120, 12, '#2a3a3a', '#4e6a6a');
+    }
+  },
   void: {
     seat: () => 0,
     draw(ctx, env, t) {

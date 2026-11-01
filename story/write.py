@@ -27,38 +27,39 @@ from validate import VOCAB, repair  # noqa: E402
 OLLAMA = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
 MODEL = os.environ.get('SCRIPT_MODEL', 'gemma4:12b')
 
-FORMULA = """THE FORMAT — a study of Day One Films shorts ("Loneliness", "Your Winter Arc Starts Now", "Lust vs Love"):
-- A 1.5 to 3 minute animated short. A plain cream blob character (the hero) fights one relatable everyday struggle.
-- THE DEMON: a black silhouette with glowing eyes is the hero's inner voice. Its glow colour fits the theme
-  (red for fear or shame, pink for lust, green for envy, purple for anxiety, orange for anger). It appears beside the hero
-  at weak moments and says SHORT, cruel, lowercase lines (2-6 words): "nobody wants to hear from you.", "stay quiet.",
-  "just one more.", "she's nothing special.", "you'll quit." The demon shrinks, fades or is ignored by the end.
-- A STORY DEVICE the viewer can track, chosen to fit the story — not always the same one:
-  * a counter (one or two numbers) that measures the struggle, e.g. "WORDS SAID TODAY: 0", or two that contrast,
-    e.g. "SEEN 1,003 / KNOWN 0", which moves through the film and turns red during relapses;
-  * day chapters ("DAY 1", "DAY 4", "DAY 30") for a transformation over time, often with a calendar being marked;
-  * or no device at all when the story doesn't need one.
-- NARRATION: 3-5 times in the film, a calm narrator voice speaks a short line shown at the bottom. The best ones have a
-  second line that twists the first: "The phone gave him a new face every second." / "She only had one."
-  Narration is sparse; most of the film is wordless acting.
-- DIALOGUE in white speech bubbles: rare, lowercase, short, human: "h-hi.", "...cool.", "coffee? saturday?",
-  "finished it. your turn.", "you came!". Thoughts can appear in brackets.
-- SPECIFIC, PHYSICAL details instead of abstract metaphors: a clock at 3:17am, a typed message that gets deleted,
-  a message left on seen, an unknown caller, a cupcake with one candle, a fridge light at 2am, a note written in a notebook,
-  a phone switched off, a charger, a calendar with days crossed off, a yellow umbrella shared in the rain.
-- INSERT SHOTS: close-ups of objects that carry meaning (a handwritten note, a calendar, a photo, a phone being turned off).
-- BIG WORDS in the scene mark a new chapter: "DAY 1.", "SATURDAY."
-- COLOUR tells the emotion: grey or cold blue while the hero is stuck, the demon's colour during temptation,
-  warm amber when connection happens, an orange sunset for the ending.
-- Characters are distinct: the hero is cream with a hood or plain; others have hair, coats, scarves, hats, colours.
-- STRUCTURE: (1) cold open — one line on black or one image that states the problem; (2) the demon wins small moments;
-  (3) a trigger or invitation (a message, a person, an alarm); (4) a first awkward attempt; (5) a small win;
-  (6) a RELAPSE where the demon wins again (counter red, colour drains); (7) the refusal — an extreme close-up of
-  determined eyes, a phone switched off, a note written; (8) progress over days; (9) the demon smaller or ignored;
-  (10) a quiet payoff with another person, often at sunset; (11) the opening line returns with a new ending;
-  (12) a two-line quote card that twists ("Lust shows you everyone." / "Love shows you someone.");
-  (13) a title card in the "X vs Y." style with a short tagline ("Look up." / "Or one more scroll."); (14) like and subscribe.
+FORMULA = """THE GENRE — minimalist animated shorts about one universal feeling (Day One Films style). These are TECHNIQUES,
+not scenes to copy. Every film must be built from the brief's own world: the hero's job, hobby, family, city, habits, objects.
+- Minimal characters: a plain cream blob hero; other people are distinguished by hair, clothes and colour.
+- The inner world made visible. Usually an inner-voice figure: a dark silhouette with glowing eyes in a colour that fits the
+  feeling. It speaks short, specific, cruel lowercase lines that come from THIS story (what this hero is afraid of). It is
+  optional: some stories show the feeling another way (the room getting darker, colour draining, a shrinking frame).
+- Show, don't tell. Most of the film is wordless acting: faces, posture, where people stand, what they hold, what they avoid.
+- Specific physical details from the brief's world carry the meaning (a guitar left in its case, a paused game, a cold dinner,
+  an unopened letter from a university, a running shoe with the tag still on). Invent details that belong to this hero only.
+- Restraint with text: dialogue is rare, short and human, sometimes in speech bubbles; narration is optional (0-4 lines, plain
+  words, a second line that turns the first); an on-screen device (a counter, day chapters) only if the story is about
+  something measurable.
+- Colour follows emotion: cold or grey when stuck, the inner voice's colour when tempted, warm when connection happens.
+- Escalation, a turn, and an ending image that answers the opening image.
+
+NEVER reuse these moments from the reference films unless the brief itself asks for them: a message left on "seen"; typing
+a reply at 2am and deleting it; "h-hi."; a yellow umbrella or a bus stop meeting; a friend appearing at the door; a bench at
+sunset as the ending; a calendar of ticked days; "just one more."; "nobody wants to hear from you."; "X vs Y." titles;
+"Everyone falls. / Not everyone gets back up."; "LOCK IN."; a counter of words said, women seen or hours scrolled.
 """
+
+SHAPES = """STORY SHAPES — choose the one that fits the brief best, or invent another; do not default to the first:
+- spiral: the struggle repeats and gets worse, a low point, a choice, a different repeat at the end.
+- two_paths: two versions of the same life or day shown side by side or alternating (what he does vs what he could do).
+- countdown: something is coming (an exam, a flight, a goodbye, a deadline) and every scene is closer to it.
+- twist: the viewer is led to misread something; the last scenes reveal what was really happening.
+- loop: the same day repeats with one small change each time, until the change becomes the whole day.
+- letter: narration is a letter or message to someone; the pictures show a different truth than the words.
+- ripple: one small act passes from person to person and comes back to the hero.
+- mirror: the first and last scenes are the same place and framing with one difference that holds the whole story.
+- what_if: an impossible premise ("what if you could hear what people really think") played out with escalating consequences.
+"""
+
 
 LOG = None
 
@@ -94,13 +95,14 @@ PERSON = {'type': 'object', 'required': ['id', 'kind'], 'properties': {
     'hood': {'type': 'boolean'}, 'glasses': {'type': 'boolean'}, 'skin': S}}
 CONCEPT_SCHEMA = {
     'type': 'object',
-    'required': ['title', 'logline', 'demon_color', 'narrator', 'device', 'cast', 'music_prompt', 'opening_line', 'beats', 'quote', 'logo'],
+    'required': ['title', 'logline', 'shape', 'shape_why', 'inner_voice', 'demon_color', 'narrator', 'device', 'cast', 'music_prompt', 'opening', 'beats', 'ending_cards'],
     'properties': {
-        'title': S, 'logline': S, 'demon_color': S, 'narrator': S, 'music_prompt': S, 'opening_line': S,
+        'title': S, 'logline': S, 'shape': S, 'shape_why': S, 'inner_voice': {'type': 'boolean'}, 'demon_color': S, 'narrator': S, 'music_prompt': S,
+        'opening': {'type': 'object', 'properties': {'type': S, 'text': S}},
+        'ending_cards': {'type': 'array', 'items': {'type': 'object', 'properties': {'style': S, 'lines': {'type': 'array', 'items': S}}}},
         'device': {'type': 'object', 'required': ['type'], 'properties': {
             'type': S, 'items': {'type': 'array', 'items': {'type': 'object', 'properties': {'label': S, 'color': S}}}}},
         'cast': {'type': 'array', 'items': PERSON},
-        'quote': {'type': 'array', 'items': S}, 'logo': {'type': 'array', 'items': S}, 'red_card': {'type': 'array', 'items': S},
         'beats': {'type': 'array', 'items': {'type': 'object', 'required': ['name', 'seconds', 'where', 'what_happens', 'emotion'], 'properties': {
             'name': S, 'seconds': N, 'where': S, 'time': S, 'weather': S, 'grade': S, 'emotion': S, 'what_happens': S,
             'demon_line': S, 'dialogue': {'type': 'array', 'items': {'type': 'object', 'properties': {'who': S, 'text': S}}},
@@ -110,25 +112,27 @@ CONCEPT_SCHEMA = {
 
 def concept(title, brief):
     v = VOCAB
-    system = FORMULA + f"""
-You are the writer and director. From the title and brief, write the concept and the beat sheet as JSON:
-- title; logline; demon_color (hex, fits the theme); narrator: male or female;
-- device: {{"type": "counter" | "days" | "none", "items": [{{"label": "Seen", "color": "#ff4fa0"}}, ...]}} (items only for counter, 1-2 short labels of 1-3 plain words, e.g. "Words said today");
-- cast: the hero (id "hero", kind "hero"), the demon (id "demon", kind "demon") and 1-3 other people with short lowercase ids
-  (kind friend or extra) and distinct looks. Wardrobe options: hair {v['wardrobe']['hair']}; hair_color {v['wardrobe']['hair_color']};
-  top/pants/scarf: colour names ({v['wardrobe']['top']}); top_style {v['wardrobe']['top_style']}; hat {v['hats']}; hood true/false; glasses true/false.
-  The hero usually stays cream with a hood (hood true, no top).
+    system = FORMULA + '\n' + SHAPES + f"""
+You are the writer and director. Read the brief closely and build an original film from it. Reply with JSON:
+- title; logline; shape (one of the shapes above, or your own) and shape_why (one sentence: why this shape fits this brief);
+- inner_voice: true/false; demon_color (hex, fits the feeling); narrator: male or female;
+- device: {{"type": "counter" | "days" | "none", "items": [{{"label": "...", "color": "#..."}}]}} — items only for a counter,
+  1-2 labels of 1-3 plain words that belong to THIS story;
+- cast: the hero (id "hero", kind "hero"), the inner voice (id "demon", kind "demon") if used, and 1-3 other people with short
+  lowercase ids (kind friend or extra) and distinct looks. Wardrobe: hair {v['wardrobe']['hair']}; hair_color {v['wardrobe']['hair_color']};
+  top/pants/scarf: colour names ({v['wardrobe']['top']}); top_style {v['wardrobe']['top_style']}; hat {v['hats']}; hood true/false; glasses true/false;
 - music_prompt: instrumental style for an AI composer (instruments, mood arc, bpm);
-- opening_line: the cold-open line shown on black ("He had seen a thousand women.");
-- beats: 12-15 beats, 4-12 seconds each, about 100-150 seconds in total. Each beat: where (one of the sets), time (night/dawn/day/dusk),
-  weather (none/rain/snow), grade (one of {list(v['grades'])}), emotion (the hero's mood: one of {v['moods']}),
-  what_happens (concrete visible action and acting), and when useful: demon_line, dialogue [{{"who": id, "text": ...}}],
-  narration + narration_twist (ONLY 3-4 beats in the whole film have narration; plain, honest words, not poetic metaphors —
-  "The phone gave him a new face every second." / "She only had one." — never "The screen is a window."), phone (what is on screen), insert (note/calendar/photo + what it shows),
-  big_text ("DAY 1."), counter_values (numbers for the device items), chapter ("DAY 4"), relapse (true/false);
-- quote: two lines, the second twists the first; logo: ["X vs Y.", "short tagline", "second tagline"]; red_card: optional ["LOOK UP.", "Right now."].
+- opening: {{"type": "line" | "image", "text": "..."}} — "line" shows one sentence on black; "image" starts straight in a scene;
+- beats: 10-15 beats, 4-12 seconds each, 90-150 seconds in total, following YOUR chosen shape. Each beat: where (one of the
+  sets), time (night/dawn/day/dusk), weather (none/rain/snow), grade (one of {list(v['grades'])}), emotion (the hero's mood:
+  one of {v['moods']}), what_happens (concrete visible action and acting, specific to this story), and only when the beat
+  needs it: demon_line, dialogue [{{"who": id, "text": ...}}], narration + narration_twist, phone (what is on the screen),
+  insert (note/calendar/photo/letter + exactly what it shows), big_text, counter_values, chapter, relapse (true/false);
+- ending_cards: 0-2 closing cards that fit THIS film, each {{"style": "quote" | "logo" | "red" | "title", "lines": [...]}}
+  (quote = two lines where the second turns the first; logo = the film's title with a short tagline; red = a short imperative).
+Vary the sets: use the places this story would really happen, not the same bedroom-cafe-desk every time.
 SETS: """ + '; '.join(f'{k} ({s["about"]})' for k, s in v['sets'].items())
-    return chat(system, f'Title: {title}\nBrief: {brief}', .85, 5000, CONCEPT_SCHEMA)
+    return chat(system, f'Title: {title}\nBrief: {brief}', .9, 5000, CONCEPT_SCHEMA)
 
 
 def shot_schema():
@@ -172,11 +176,22 @@ def shots_for_beat(beat, i, n, sheet, example):
 You are the storyboard artist. Turn ONE beat into 2-4 shots. Reply with JSON only: {{"shots": [ ...shot objects... ]}}.
 Cast ids: {ids}. Story device: {json.dumps(dev)} — put the beat's counter values in hud.values (same order as the items) and its chapter in hud.chapter.
 Shot durations in a beat add up to about the beat's seconds.
-Example shots from another film in this format (follow the style and JSON shape, not the story):
+JSON shape examples (placeholders in <> are filled from THIS story; invent the content, never copy it):
 {example}"""
     user = f"Beat {i + 1} of {n}:\n{json.dumps(beat, ensure_ascii=False)}"
-    shots = chat(system, user, .55, 3200).get('shots') or []
+    shots = chat(system, user, .6, 3200).get('shots') or []
+
+    def scrub(o):
+        # drop any placeholder the model copied literally from the shape examples
+        if isinstance(o, dict):
+            return {k: scrub(v) for k, v in o.items() if not (isinstance(v, str) and re.fullmatch(r'\s*<[^>]*>\s*', v))}
+        if isinstance(o, list):
+            return [scrub(x) for x in o]
+        return o
+    shots = [scrub(x) for x in shots if isinstance(x, dict)]
     for s in shots:
+        for a_ in s.get('actors') or []:
+            a_.setdefault('mood', beat.get('emotion')) if a_.get('id') == 'hero' else None
         if not s.get('card') and (s.get('camera') or {}).get('frame') not in ('insert',):
             s.setdefault('set', beat.get('where'))
         for key in ('time', 'grade'):
@@ -190,8 +205,26 @@ Example shots from another film in this format (follow the style and JSON shape,
 
 
 def example_shots():
-    film = json.loads((ROOT / 'examples' / 'envy-vs-enough.json').read_text())
-    return json.dumps([film['shots'][k] for k in (1, 3, 5, 9, 11, 13, 16, 18)], ensure_ascii=False)
+    """JSON shape only. Placeholders in <angle brackets> stand for content from THIS story; nothing here is a scene to reuse."""
+    return json.dumps([
+        {"dur": 3.4, "set": "<set>", "time": "<time>", "grade": "<grade>", "camera": {"frame": "wide", "push": 0.05},
+         "actors": [{"id": "hero", "x": 48, "pose": "<pose>", "mood": "<mood>", "hold": "<item or none>"}],
+         "items": [{"type": "<item>", "x": 30}]},
+        {"dur": 3.0, "set": "<set>", "grade": "<grade>", "camera": {"frame": "close", "on": "hero"},
+         "actors": [{"id": "hero", "x": 50, "pose": "<pose>", "mood": "<mood>"}, {"id": "demon", "x": 38, "pose": "lean", "target": "hero"}],
+         "lines": [{"who": "demon", "text": "<short cruel line from this story>", "at": 0.8}]},
+        {"dur": 4.2, "set": "<set>", "camera": {"frame": "two", "on": "hero"},
+         "actors": [{"id": "<friend id>", "x": 20, "pose": "sit", "mood": "<mood>", "facing": 1}, {"id": "hero", "x": 31, "pose": "sit", "mood": "<mood>", "facing": -1}],
+         "lines": [{"who": "<friend id>", "text": "<short line>", "at": 0.4, "dur": 1.8}, {"who": "hero", "text": "<reply>", "at": 2.4}]},
+        {"dur": 5.0, "set": "<set>", "grade": "<grade>", "camera": {"frame": "medium"},
+         "actors": [{"id": "hero", "x": 50, "pose": "<pose>", "mood": "<mood>"}],
+         "lines": [{"who": "narrator", "text": "<plain sentence>", "twist": "<second sentence that turns it>", "at": 0.3}]},
+        {"dur": 4.5, "set": "<set>", "camera": {"frame": "phone"}, "phone": {"app": "chat", "contact": "<name>", "messages": [{"from": "them", "text": "<message>", "at": 0.3}], "typing": {"text": "<reply>", "at": 1.5, "action": "send"}}},
+        {"dur": 4.0, "camera": {"frame": "insert"}, "insert": {"type": "note", "text": "<exact words written>"}},
+        {"dur": 2.4, "set": "<set>", "camera": {"frame": "extreme", "on": "hero", "push": 0.1}, "actors": [{"id": "hero", "x": 50, "pose": "<pose>", "mood": "<mood>"}]},
+        {"dur": 4.0, "set": "<set>", "camera": {"frame": "wide"}, "big": {"text": "<CHAPTER WORD.>", "at": 0.3},
+         "actors": [{"id": "hero", "x": 15, "to": 70, "pose": "walk", "mood": "<mood>"}]}
+    ], ensure_ascii=False)
 
 
 def stage_beats(title, brief, out_dir):
@@ -216,7 +249,7 @@ def stage_beats(title, brief, out_dir):
     with open(LOG, 'a') as f:
         f.write('--- concept\n' + json.dumps(sheet, indent=1, ensure_ascii=False) + '\n')
     print(f'{len(beats)} beats in {(time.time() - t0) / 60:.1f} min', flush=True)
-    summary = f"{sheet.get('logline', '')} | device: {json.dumps(sheet.get('device'))} | " + ' | '.join(f"{b.get('name')}: {b.get('what_happens')}" for b in beats)
+    summary = f"shape: {sheet.get('shape')} ({sheet.get('shape_why', '')}) | {sheet.get('logline', '')} | device: {json.dumps(sheet.get('device'))} | " + ' | '.join(f"{b.get('name')}: {b.get('what_happens')}" for b in beats)
     print('::notice title=Concept::' + summary[:6000].replace('\n', ' ').replace('%', '%25'))
     return sheet
 
@@ -271,25 +304,25 @@ def assemble(sheet, shots, out_path):
             cast[pid].pop('hat', None)
     dev = sheet.get('device') or {}
     hud = {'items': dev.get('items')[:2]} if dev.get('type') == 'counter' and dev.get('items') else None
-    opening = (sheet.get('opening_line') or '').strip()
+    op = sheet.get('opening') or {}
     head = []
-    if opening:
-        head.append({'dur': 3.6, 'music': 'low', 'card': {'style': 'line', 'lines': [opening]},
-                     'lines': [{'who': 'narrator', 'text': opening, 'at': .2, 'hidden': True}]})
+    if op.get('type') == 'line' and str(op.get('text') or '').strip():
+        line = str(op['text']).strip()
+        head.append({'dur': 3.6, 'music': 'low', 'card': {'style': 'line', 'lines': [line]},
+                     'lines': [{'who': 'narrator', 'text': line, 'at': .2, 'hidden': True}]})
     tail = []
-    q = sheet.get('quote') or []
-    if len(q) >= 2:
-        tail.append({'dur': 4.6, 'music': 'high', 'card': {'style': 'quote', 'lines': q[:2]}})
-    logo = sheet.get('logo') or []
-    if logo:
-        tail.append({'dur': 4.6, 'music': 'high', 'card': {'style': 'logo', 'lines': logo[:3]}})
-    r = sheet.get('red_card') or []
-    if r and not logo:
-        tail.append({'dur': 3.0, 'music': 'high', 'card': {'style': 'red', 'lines': r[:2]}})
+    for card in (sheet.get('ending_cards') or [])[:2]:
+        lines = [str(x) for x in (card.get('lines') or []) if str(x).strip()]
+        if lines and card.get('style') in ('quote', 'logo', 'red', 'title'):
+            tail.append({'dur': 4.6 if card['style'] != 'red' else 3.2, 'music': 'high', 'card': {'style': card['style'], 'lines': lines[:3]}})
     tail.append({'dur': 4.2, 'music': 'mid', 'card': {'style': 'cta', 'lines': ['If this hit, like and subscribe.']},
                  'actors': [{'id': 'hero', 'x': 50, 'pose': 'wave', 'mood': 'happy', 'scale': .7}]})
+    if sheet.get('inner_voice') is False:
+        for s_ in shots:
+            s_['actors'] = [a_ for a_ in s_.get('actors') or [] if a_.get('id') != 'demon']
+            s_['lines'] = [l_ for l_ in s_.get('lines') or [] if l_.get('who') != 'demon']
     film = {
-        'title': title, 'logline': sheet.get('logline', ''), 'demon_color': sheet.get('demon_color'), 'narrator': sheet.get('narrator'),
+        'title': title, 'logline': sheet.get('logline', ''), 'shape': sheet.get('shape'), 'demon_color': sheet.get('demon_color'), 'narrator': sheet.get('narrator'),
         'hud': hud, 'music': {'prompt': sheet.get('music_prompt') or ''}, 'cast': cast,
         'shots': head + shots + tail, 'beats': sheet.get('beats'),
     }
