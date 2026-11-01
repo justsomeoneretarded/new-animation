@@ -51,7 +51,7 @@ def repair(film: dict) -> tuple[dict, list[str]]:
     if isinstance(hud, dict) and hud.get('label') and not hud.get('items'):
         hud = {'items': [{'label': hud['label'], 'color': hud.get('color', '#ffd34a')}]}
     if isinstance(hud, dict) and isinstance(hud.get('items'), list):
-        items = [{'label': str(it.get('label', ''))[:22], 'color': it.get('color') if HEX(it.get('color')) else '#ffd34a'}
+        items = [{'label': ' '.join(str(it.get('label', '')).replace('_', ' ').split())[:22], 'color': it.get('color') if HEX(it.get('color')) else '#ffd34a'}
                  for it in hud['items'][:2] if isinstance(it, dict) and it.get('label')]
         film['hud'] = {'items': items} if items else None
     else:
