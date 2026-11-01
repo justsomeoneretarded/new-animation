@@ -60,9 +60,14 @@ jobs:
         with: { python-version: '3.12' }
       - name: Choose the source
         id: mode
+        # Inputs are passed through the environment, never pasted into the script: a brief with
+        # quotes or line breaks would otherwise break the shell.
+        env:
+          FILM_FILE: ${{ inputs.film_file }}
+          BRIEF: ${{ inputs.brief }}
         run: |
-          if [ -n "${{ inputs.film_file }}" ]; then echo "mode=file" >> "$GITHUB_OUTPUT";
-          elif [ -z "${{ inputs.brief }}" ]; then echo "mode=example" >> "$GITHUB_OUTPUT";
+          if [ -n "$FILM_FILE" ]; then echo "mode=file" >> "$GITHUB_OUTPUT";
+          elif [ -z "$(echo "$BRIEF" | tr -d '[:space:]')" ]; then echo "mode=example" >> "$GITHUB_OUTPUT";
           else echo "mode=write" >> "$GITHUB_OUTPUT"; fi
       - name: Prepare the local script model
         if: steps.mode.outputs.mode == 'write'
